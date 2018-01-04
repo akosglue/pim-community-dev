@@ -309,6 +309,59 @@ class ChangeVariantFamilyStructureIntegration extends TestCase
         );
     }
 
+    public function testBulkMoveAnAttributeFromItsLevelDoesNotRunBackgroundJobs()
+    {
+        $product = $this->get('pim_catalog.repository.variant_product')->findOneByIdentifier('1111111287');
+        $this->assertInstanceOf(ValueInterface::class, $product->getValuesForVariation()->getByCodes('weight'));
+
+        $familyVariant = $this->get('pim_catalog.repository.family_variant')->findOneByIdentifier('shoes_size');
+
+        // Put weight in common attributes
+        $this->get('pim_catalog.updater.family_variant')->update(
+            $familyVariant,
+            [
+                'variant_attribute_sets' => [
+                    [
+                        'level'      => 1,
+                        'attributes' => [
+                            'size',
+                        ],
+                        'axes'       => [
+                            'eu_shoes_size',
+                        ],
+                    ],
+                ],
+            ]
+        );
+
+        $violationList = $this->get('validator')->validate($familyVariant);
+        if (0 !== $violationList->count()) {
+            throw new \LogicException('The family is not valid');
+        }
+
+        $this->get('pim_catalog.saver.family_variant')->saveAll([$familyVariant]);
+
+        while ($this->jobLauncher->hasJobInQueue()) {
+            $this->jobLauncher->launchConsumerOnce();
+        }
+
+        $this->get('doctrine.orm.default_entity_manager')->clear();
+
+        $product = $this->get('pim_catalog.repository.variant_product')
+            ->findOneByIdentifier('1111111287');
+
+        $this->assertNotNull($product->getValuesForVariation()->getByCodes('weight'));
+
+        $this->assertCount(
+            0,
+            $this->jobExecutionObserver->jobExecutionsWithJobName('compute_family_variant_structure_changes')
+        );
+        $this->assertCount(
+            0,
+            $this->jobExecutionObserver->jobExecutionsWithJobName('compute_product_models_descendants')
+        );
+    }
+
     protected function setUp()
     {
         parent::setUp();
@@ -318,6 +371,8 @@ class ChangeVariantFamilyStructureIntegration extends TestCase
         $this->jobExecutionObserver = $this->getFromTestContainer(
             'akeneo_integration_tests.launcher.job_execution_observer'
         );
+        $this->jobExecutionObserver->purge('compute_family_variant_structure_changes');
+        $this->jobExecutionObserver->purge('compute_product_models_descendants');
     }
 
     /**
