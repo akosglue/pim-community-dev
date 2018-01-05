@@ -13,6 +13,7 @@ use Doctrine\ORM\QueryBuilder;
 use Doctrine\ORM\UnitOfWork;
 use PhpSpec\ObjectBehavior;
 use Pim\Bundle\CatalogBundle\Doctrine\ORM\Repository\ProductModelRepository;
+use Pim\Component\Catalog\Model\FamilyInterface;
 use Pim\Component\Catalog\Model\ProductModel;
 use Pim\Component\Catalog\Model\ProductModelInterface;
 use Pim\Component\Catalog\Repository\ProductModelRepositoryInterface;
@@ -85,5 +86,29 @@ class ProductModelRepositorySpec extends ObjectBehavior
         $query->execute()->willReturn([$fooModel, $barModel]);
 
         $this->getItemsFromIdentifiers(['foo', 'bar'])->shouldReturn([$fooModel, $barModel]);
+    }
+
+    function it_finds_an_array_of_root_product_models_by_their_family(
+        $em,
+        ProductModelInterface $fooModel,
+        ProductModelInterface $barModel,
+        QueryBuilder $qb,
+        AbstractQuery $query,
+        FamilyInterface $family
+    ) {
+        $family->getId()->willReturn(150);
+
+        $em->createQueryBuilder()->willReturn($qb);
+        $qb->select('pm')->willReturn($qb);
+        $qb->from(ProductModel::class, 'pm', null)->willReturn($qb);
+        $qb->where('pm.parent IS NULL')->willReturn($qb);
+        $qb->andWhere('fv.family = :family')->willReturn($qb);
+        $qb->join('pm.familyVariant', 'fv')->willReturn($qb);
+        $qb->setParameter('family', 150)->willReturn($qb);
+
+        $qb->getQuery()->willReturn($query);
+        $query->execute()->willReturn([$fooModel, $barModel]);
+
+        $this->findRootProductModelsWithFamily($family)->shouldReturn([$fooModel, $barModel]);
     }
 }

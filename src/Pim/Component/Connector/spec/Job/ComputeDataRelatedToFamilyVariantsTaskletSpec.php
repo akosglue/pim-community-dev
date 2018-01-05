@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace spec\Pim\Component\Connector\Job;
 
+use Akeneo\Component\Batch\Item\InvalidItemException;
 use Akeneo\Component\Batch\Item\ItemReaderInterface;
+use Akeneo\Component\Batch\Model\StepExecution;
 use Akeneo\Component\StorageUtils\Saver\BulkSaverInterface;
 use Akeneo\Component\StorageUtils\Saver\SaverInterface;
 use PhpSpec\ObjectBehavior;
@@ -13,6 +15,7 @@ use Pim\Component\Catalog\Model\ProductModelInterface;
 use Pim\Component\Catalog\Repository\FamilyRepositoryInterface;
 use Pim\Component\Catalog\Repository\ProductModelRepositoryInterface;
 use Pim\Component\Connector\Job\ComputeDataRelatedToFamilyVariantsTasklet;
+use Prophecy\Argument;
 
 class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
 {
@@ -46,12 +49,11 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
         FamilyInterface $family,
         ProductModelInterface $rootProductModel
     ) {
-        $familyReader->read()->willReturn(['code' => 'my_family']);
+        $familyReader->read()->willReturn(['code' => 'my_family'], null);
         $familyRepository->findOneByIdentifier('my_family')->willReturn($family);
         $productModelRepository->findRootProductModelsWithFamily($family)->willReturn([$rootProductModel]);
         $productModelSaver->saveAll([$rootProductModel])->shouldBeCalled();
         $productModelDescendantsSaver->save($rootProductModel)->shouldBeCalled();
-
 
         $this->execute();
     }
@@ -73,16 +75,52 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
         $productModelSaver->saveAll([$rootProductModel1])->shouldBeCalled();
         $productModelDescendantsSaver->save($rootProductModel1)->shouldBeCalled();
 
-        $familyRepository->findOneByIdentifier('second_family')->willReturn($family1);
-        $productModelRepository->findRootProductModelsWithFamily($family1)->willReturn([$rootProductModel2]);
+        $familyRepository->findOneByIdentifier('second_family')->willReturn($family2);
+        $productModelRepository->findRootProductModelsWithFamily($family2)->willReturn([$rootProductModel2]);
         $productModelSaver->saveAll([$rootProductModel2])->shouldBeCalled();
         $productModelDescendantsSaver->save($rootProductModel2)->shouldBeCalled();
 
         $this->execute();
     }
 
+    function it_skips_if_the_family_is_unknown(
+        $familyReader,
+        $familyRepository,
+        $productModelRepository,
+        $productModelSaver,
+        $productModelDescendantsSaver,
+        StepExecution $stepExecution
+    ) {
+        $familyReader->read()->willReturn(['code' => 'unkown_family'], null);
+        $familyRepository->findOneByIdentifier('unkown_family')->willReturn(null);
 
-    /**
-     * check family code is invalid
-     */
+        $stepExecution->incrementSummaryInfo('skip')->shouldBeCalled();
+
+        $productModelRepository->findRootProductModelsWithFamily(Argument::any())->shouldNotBeCalled();
+        $productModelSaver->saveAll(Argument::any())->shouldNotBeCalled();
+        $productModelDescendantsSaver->save(Argument::any())->shouldNotBeCalled();
+
+        $this->setStepExecution($stepExecution);
+        $this->execute();
+    }
+
+    function it_handles_invalid_lines(
+        $familyReader,
+        $familyRepository,
+        $productModelRepository,
+        $productModelSaver,
+        $productModelDescendantsSaver,
+        StepExecution $stepExecution
+    ) {
+        $familyReader->read()->willThrow(InvalidItemException::class);
+        $familyReader->read()->willReturn(null);
+
+        $familyRepository->findOneByIdentifier(Argument::any())->shouldNotBeCalled();
+        $productModelRepository->findRootProductModelsWithFamily(Argument::any())->shouldNotBeCalled();
+        $productModelSaver->saveAll(Argument::any())->shouldNotBeCalled();
+        $productModelDescendantsSaver->save(Argument::any())->shouldNotBeCalled();
+
+        $this->setStepExecution($stepExecution);
+        $this->execute();
+    }
 }

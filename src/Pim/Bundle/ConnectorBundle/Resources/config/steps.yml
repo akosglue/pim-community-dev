@@ -55,6 +55,14 @@ services:
             - '@pim_connector.processor.denormalization.family'
             - '@pim_connector.writer.database.family'
 
+    pim_connector.step.csv_family.compute_data_related_to_family_variants:
+        class: '%pim_connector.step.tasklet.class%'
+        arguments:
+            - 'compute_data_related_to_family_variants'
+            - '@event_dispatcher'
+            - '@akeneo_batch.job_repository'
+            - '@pim_connector.tasklet.csv_family.compute_data_related_to_family_variants'
+
     pim_connector.step.csv_family_variant.import:
         class: '%pim_connector.step.item_step.class%'
         arguments:

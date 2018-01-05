@@ -17,6 +17,8 @@ Feature: Import families
     When I am on the "csv_footwear_family_import" import job page
     And I launch the import job
     And I wait for the "csv_footwear_family_import" job to finish
+    And I should see the text "Family import"
+    And I should see the text "Compute data related to family variants"
     Then there should be the following family:
       | code     | attributes            | attribute_as_label | requirements-mobile | requirements-tablet | label-en_US |
       | tractors | sku,name,manufacturer | name               | sku,manufacturer    | sku,manufacturer    | Tractors    |
