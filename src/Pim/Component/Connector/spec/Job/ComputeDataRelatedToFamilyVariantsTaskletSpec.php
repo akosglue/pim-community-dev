@@ -7,6 +7,7 @@ namespace spec\Pim\Component\Connector\Job;
 use Akeneo\Component\Batch\Item\InvalidItemException;
 use Akeneo\Component\Batch\Item\ItemReaderInterface;
 use Akeneo\Component\Batch\Model\StepExecution;
+use Akeneo\Component\StorageUtils\Cache\CacheClearerInterface;
 use Akeneo\Component\StorageUtils\Saver\BulkSaverInterface;
 use Akeneo\Component\StorageUtils\Saver\SaverInterface;
 use PhpSpec\ObjectBehavior;
@@ -24,14 +25,16 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
         ProductModelRepositoryInterface $productModelRepository,
         ItemReaderInterface $familyReader,
         BulkSaverInterface $productModelSaver,
-        SaverInterface $productModelDescendantsSaver
+        SaverInterface $productModelDescendantsSaver,
+        CacheClearerInterface $cacheClearer
     ) {
         $this->beConstructedWith(
             $familyRepository,
             $productModelRepository,
             $familyReader,
             $productModelSaver,
-            $productModelDescendantsSaver
+            $productModelDescendantsSaver,
+            $cacheClearer
         );
     }
 
@@ -47,7 +50,8 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
         $productModelSaver,
         $productModelDescendantsSaver,
         FamilyInterface $family,
-        ProductModelInterface $rootProductModel
+        ProductModelInterface $rootProductModel,
+        StepExecution $stepExecution
     ) {
         $familyReader->read()->willReturn(['code' => 'my_family'], null);
         $familyRepository->findOneByIdentifier('my_family')->willReturn($family);
@@ -55,6 +59,9 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
         $productModelSaver->saveAll([$rootProductModel])->shouldBeCalled();
         $productModelDescendantsSaver->save($rootProductModel)->shouldBeCalled();
 
+        $stepExecution->incrementSummaryInfo('process')->shouldBeCalled();
+
+        $this->setStepExecution($stepExecution);
         $this->execute();
     }
 
@@ -67,7 +74,8 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
         FamilyInterface $family1,
         FamilyInterface $family2,
         ProductModelInterface $rootProductModel1,
-        ProductModelInterface $rootProductModel2
+        ProductModelInterface $rootProductModel2,
+        StepExecution $stepExecution
     ) {
         $familyReader->read()->willReturn(['code' => 'first_family'], ['code' => 'second_family'], null);
         $familyRepository->findOneByIdentifier('first_family')->willReturn($family1);
@@ -80,6 +88,8 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
         $productModelSaver->saveAll([$rootProductModel2])->shouldBeCalled();
         $productModelDescendantsSaver->save($rootProductModel2)->shouldBeCalled();
 
+        $stepExecution->incrementSummaryInfo('process')->shouldBeCalledTimes(2);
+        $this->setStepExecution($stepExecution);
         $this->execute();
     }
 

@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Pim\Component\Connector\Job;
 
+use Akeneo\Component\Batch\Item\InitializableInterface;
 use Akeneo\Component\Batch\Item\InvalidItemException;
 use Akeneo\Component\Batch\Item\ItemReaderInterface;
 use Akeneo\Component\Batch\Model\StepExecution;
+use Akeneo\Component\StorageUtils\Cache\CacheClearerInterface;
 use Akeneo\Component\StorageUtils\Saver\BulkSaverInterface;
 use Akeneo\Component\StorageUtils\Saver\SaverInterface;
 use Pim\Component\Catalog\Repository\FamilyRepositoryInterface;
@@ -20,7 +22,7 @@ use Pim\Component\Connector\Step\TaskletInterface;
  * @copyright 2018 Akeneo SAS (http://www.akeneo.com)
  * @license   http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
  */
-class ComputeDataRelatedToFamilyVariantsTasklet implements TaskletInterface
+class ComputeDataRelatedToFamilyVariantsTasklet implements TaskletInterface, InitializableInterface
 {
     /** @var StepExecution */
     private $stepExecution;
@@ -40,25 +42,31 @@ class ComputeDataRelatedToFamilyVariantsTasklet implements TaskletInterface
     /** @var SaverInterface */
     private $productModelDescendantsSaver;
 
+    /** @var CacheClearerInterface */
+    private $cacheClearer;
+
     /**
-     * @param ItemReaderInterface             $familyReader
      * @param FamilyRepositoryInterface       $familyRepository
      * @param ProductModelRepositoryInterface $productModelRepository
+     * @param ItemReaderInterface             $familyReader
      * @param BulkSaverInterface              $productModelSaver
      * @param SaverInterface                  $productModelDescendantsSaver
+     * @param CacheClearerInterface           $cacheClearer
      */
     public function __construct(
         FamilyRepositoryInterface $familyRepository,
         ProductModelRepositoryInterface $productModelRepository,
         ItemReaderInterface $familyReader,
         BulkSaverInterface $productModelSaver,
-        SaverInterface $productModelDescendantsSaver
+        SaverInterface $productModelDescendantsSaver,
+        CacheClearerInterface $cacheClearer
     ) {
         $this->familyReader = $familyReader;
         $this->familyRepository = $familyRepository;
         $this->productModelRepository = $productModelRepository;
         $this->productModelSaver = $productModelSaver;
         $this->productModelDescendantsSaver = $productModelDescendantsSaver;
+        $this->cacheClearer = $cacheClearer;
     }
 
     /**
@@ -74,6 +82,8 @@ class ComputeDataRelatedToFamilyVariantsTasklet implements TaskletInterface
      */
     public function execute()
     {
+        $this->initialize();
+
         while (true) {
             try {
                 $familyItem = $this->familyReader->read();
@@ -94,7 +104,17 @@ class ComputeDataRelatedToFamilyVariantsTasklet implements TaskletInterface
             $this->productModelSaver->saveAll($rootProductModels);
             foreach ($rootProductModels as $rootProductModel) {
                 $this->productModelDescendantsSaver->save($rootProductModel);
+                $this->stepExecution->incrementSummaryInfo('process');
             }
         }
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function initialize()
+    {
+//        $this->familyReader->setStepExecution($this->stepExecution);
+        $this->cacheClearer->clear();
     }
 }

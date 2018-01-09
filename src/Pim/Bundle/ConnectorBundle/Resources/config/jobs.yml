@@ -134,6 +134,7 @@ services:
             - '@pim_connector.reader.file.csv_family'
             - '@pim_catalog.saver.product_model'
             - '@pim_catalog.saver.product_model_descendants'
+            - '@pim_connector.doctrine.cache_clearer'
 
     pim_connector.job.csv_group_import:
         class: '%pim_connector.job.simple_job.class%'
