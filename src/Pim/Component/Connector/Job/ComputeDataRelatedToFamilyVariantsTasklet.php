@@ -16,7 +16,9 @@ use Pim\Component\Catalog\Repository\ProductModelRepositoryInterface;
 use Pim\Component\Connector\Step\TaskletInterface;
 
 /**
- *
+ * Tasklet responsible for:
+ * - calling save on the root product families of each family variants of each family read in the file.
+ * - compute the product model descendants of the root product models found.
  *
  * @author    Samir Boulil <samir.boulil@akeneo.com>
  * @copyright 2018 Akeneo SAS (http://www.akeneo.com)
