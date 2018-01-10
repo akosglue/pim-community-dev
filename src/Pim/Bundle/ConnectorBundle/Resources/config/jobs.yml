@@ -61,7 +61,7 @@ parameters:
     pim_connector.step.item_step.class: Akeneo\Component\Batch\Step\ItemStep
     pim_connector.job.import_type: import
     pim_connector.job.export_type: export
-    pim_connector.tasklet.csv_family.compute_data_related_to_family_variants.class: Pim\Component\Connector\Job\ComputeDataRelatedToFamilyVariantsTasklet
+    pim_connector.tasklet.family.compute_data_related_to_family_variants.class: Pim\Component\Connector\Job\ComputeDataRelatedToFamilyVariantsTasklet
 
 services:
     # CSV Imports -----------------------------------------------------------------------------------------------------
@@ -125,16 +125,6 @@ services:
                 - '@pim_connector.step.csv_family_variant.import'
         tags:
             - { name: akeneo_batch.job, connector: '%pim_connector.connector_name.csv%', type: '%pim_connector.job.import_type%' }
-
-    pim_connector.tasklet.csv_family.compute_data_related_to_family_variants:
-        class: '%pim_connector.tasklet.csv_family.compute_data_related_to_family_variants.class%'
-        arguments:
-            - '@pim_catalog.repository.family'
-            - '@pim_catalog.repository.product_model'
-            - '@pim_connector.reader.file.csv_family'
-            - '@pim_catalog.saver.product_model'
-            - '@pim_catalog.saver.product_model_descendants'
-            - '@pim_connector.doctrine.cache_clearer'
 
     pim_connector.job.csv_group_import:
         class: '%pim_connector.job.simple_job.class%'
@@ -448,6 +438,7 @@ services:
             -
                 - '@pim_connector.step.charset_validator'
                 - '@pim_connector.step.xlsx_family.import'
+                - '@pim_connector.step.xlsx_family.compute_data_related_to_family_variants'
         tags:
             - { name: akeneo_batch.job, connector: '%pim_connector.connector_name.xlsx%', type: '%pim_connector.job.import_type%' }
 
