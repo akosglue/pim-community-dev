@@ -109,7 +109,15 @@ jobs:
             groupsColumn:       groups
             realTimeVersioning: true
             decimalSeparator:   .
-
+    csv_catalog_modeling_family_import:
+        connector: Akeneo CSV Connector
+        alias:     csv_family_import
+        label:     CSV catalog modeling family import
+        type:      import
+        configuration:
+            uploadAllowed: true
+            delimiter:     ;
+            enclosure:     '"'
     csv_catalog_modeling_family_variant_import:
         connector: Akeneo CSV Connector
         alias:     csv_family_variant_import
