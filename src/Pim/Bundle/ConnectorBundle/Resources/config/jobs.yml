@@ -61,7 +61,6 @@ parameters:
     pim_connector.step.item_step.class: Akeneo\Component\Batch\Step\ItemStep
     pim_connector.job.import_type: import
     pim_connector.job.export_type: export
-    pim_connector.tasklet.family.compute_data_related_to_family_variants.class: Pim\Component\Connector\Job\ComputeDataRelatedToFamilyVariantsTasklet
 
 services:
     # CSV Imports -----------------------------------------------------------------------------------------------------

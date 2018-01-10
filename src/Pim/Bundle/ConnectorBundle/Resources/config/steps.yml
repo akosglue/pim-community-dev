@@ -3,6 +3,7 @@ parameters:
     pim_connector.step.tasklet.class:   Pim\Component\Connector\Step\TaskletStep
     pim_connector.step.product.import.bulk_size: 1000
     pim_connector.step.product_model.import.bulk_size: 100
+    pim_connector.tasklet.family.compute_data_related_to_family_variants.class: Pim\Component\Connector\Job\ComputeDataRelatedToFamilyVariantsTasklet
 
 services:
     # Validator steps -------------------------------------------------------------------------------------------------

@@ -8,6 +8,7 @@ use Akeneo\Component\Batch\Item\InitializableInterface;
 use Akeneo\Component\Batch\Item\InvalidItemException;
 use Akeneo\Component\Batch\Item\ItemReaderInterface;
 use Akeneo\Component\Batch\Model\StepExecution;
+use Akeneo\Component\Batch\Step\StepExecutionAwareInterface;
 use Akeneo\Component\StorageUtils\Cache\CacheClearerInterface;
 use Akeneo\Component\StorageUtils\Saver\BulkSaverInterface;
 use Akeneo\Component\StorageUtils\Saver\SaverInterface;
@@ -16,9 +17,10 @@ use Pim\Component\Catalog\Repository\ProductModelRepositoryInterface;
 use Pim\Component\Connector\Step\TaskletInterface;
 
 /**
- * Tasklet responsible for:
- * - calling save on the root product families of each family variants of each family read in the file.
- * - compute the product model descendants of the root product models found.
+ * Foreach line of the file to import we will:
+ * - fetch the corresponding family object
+ * - fetch all the root product models of this family
+ * - save this root product model and all its descendants (in order to such things as recompute completeness for instance)
  *
  * @author    Samir Boulil <samir.boulil@akeneo.com>
  * @copyright 2018 Akeneo SAS (http://www.akeneo.com)
@@ -103,11 +105,7 @@ class ComputeDataRelatedToFamilyVariantsTasklet implements TaskletInterface, Ini
             }
 
             $rootProductModels = $this->productModelRepository->findRootProductModelsWithFamily($family);
-            $this->productModelSaver->saveAll($rootProductModels);
-            foreach ($rootProductModels as $rootProductModel) {
-                $this->productModelDescendantsSaver->save($rootProductModel);
-                $this->stepExecution->incrementSummaryInfo('process');
-            }
+            $this->computeProductModelAndProductModelDescendants($rootProductModels);
         }
     }
 
@@ -116,7 +114,21 @@ class ComputeDataRelatedToFamilyVariantsTasklet implements TaskletInterface, Ini
      */
     public function initialize()
     {
-//        $this->familyReader->setStepExecution($this->stepExecution);
+        if ($this->familyReader instanceof StepExecutionAwareInterface) {
+            $this->familyReader->setStepExecution($this->stepExecution);
+        }
         $this->cacheClearer->clear();
+    }
+
+    /**
+     * @param array $rootProductModels
+     */
+    private function computeProductModelAndProductModelDescendants(array $rootProductModels): void
+    {
+        $this->productModelSaver->saveAll($rootProductModels);
+        foreach ($rootProductModels as $rootProductModel) {
+            $this->productModelDescendantsSaver->save($rootProductModel);
+            $this->stepExecution->incrementSummaryInfo('process');
+        }
     }
 }
