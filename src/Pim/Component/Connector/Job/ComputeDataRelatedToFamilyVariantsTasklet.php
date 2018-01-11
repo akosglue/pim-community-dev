@@ -10,8 +10,12 @@ use Akeneo\Component\Batch\Item\ItemReaderInterface;
 use Akeneo\Component\Batch\Model\StepExecution;
 use Akeneo\Component\Batch\Step\StepExecutionAwareInterface;
 use Akeneo\Component\StorageUtils\Cache\CacheClearerInterface;
+use Akeneo\Component\StorageUtils\Cursor\CursorInterface;
 use Akeneo\Component\StorageUtils\Saver\BulkSaverInterface;
 use Akeneo\Component\StorageUtils\Saver\SaverInterface;
+use Pim\Component\Catalog\Model\FamilyInterface;
+use Pim\Component\Catalog\Query\Filter\Operators;
+use Pim\Component\Catalog\Query\ProductQueryBuilderFactoryInterface;
 use Pim\Component\Catalog\Repository\FamilyRepositoryInterface;
 use Pim\Component\Catalog\Repository\ProductModelRepositoryInterface;
 use Pim\Component\Connector\Step\TaskletInterface;
@@ -28,6 +32,8 @@ use Pim\Component\Connector\Step\TaskletInterface;
  */
 class ComputeDataRelatedToFamilyVariantsTasklet implements TaskletInterface, InitializableInterface
 {
+    private const BULK_SIZE = 100;
+
     /** @var StepExecution */
     private $stepExecution;
 
@@ -49,6 +55,9 @@ class ComputeDataRelatedToFamilyVariantsTasklet implements TaskletInterface, Ini
     /** @var CacheClearerInterface */
     private $cacheClearer;
 
+    /** @var ProductQueryBuilderFactoryInterface */
+    private $productQueryBuilderFactory;
+
     /**
      * @param FamilyRepositoryInterface       $familyRepository
      * @param ProductModelRepositoryInterface $productModelRepository
@@ -59,7 +68,7 @@ class ComputeDataRelatedToFamilyVariantsTasklet implements TaskletInterface, Ini
      */
     public function __construct(
         FamilyRepositoryInterface $familyRepository,
-        ProductModelRepositoryInterface $productModelRepository,
+        ProductQueryBuilderFactoryInterface $productQueryBuilderFactory,
         ItemReaderInterface $familyReader,
         BulkSaverInterface $productModelSaver,
         SaverInterface $productModelDescendantsSaver,
@@ -67,7 +76,7 @@ class ComputeDataRelatedToFamilyVariantsTasklet implements TaskletInterface, Ini
     ) {
         $this->familyReader = $familyReader;
         $this->familyRepository = $familyRepository;
-        $this->productModelRepository = $productModelRepository;
+        $this->productQueryBuilderFactory = $productQueryBuilderFactory;
         $this->productModelSaver = $productModelSaver;
         $this->productModelDescendantsSaver = $productModelDescendantsSaver;
         $this->cacheClearer = $cacheClearer;
@@ -104,8 +113,8 @@ class ComputeDataRelatedToFamilyVariantsTasklet implements TaskletInterface, Ini
                 continue;
             }
 
-            $rootProductModels = $this->productModelRepository->findRootProductModelsWithFamily($family);
-            $this->computeProductModelAndProductModelDescendants($rootProductModels);
+            $rootProductModels = $this->getRootProductModelsForFamily($family);
+            $this->computeProductModelAndProductModelDescendantsInBulk($rootProductModels);
         }
     }
 
@@ -121,13 +130,41 @@ class ComputeDataRelatedToFamilyVariantsTasklet implements TaskletInterface, Ini
     }
 
     /**
+     * @param FamilyInterface $family
+     *
+     * @return CursorInterface
+     */
+    private function getRootProductModelsForFamily(FamilyInterface $family): CursorInterface
+    {
+        $pqb = $this->productQueryBuilderFactory->create();
+        $pqb->addFilter('family', Operators::EQUALS, $family->getCode());
+        $pqb->addFilter('parent', Operators::IS_EMPTY, null);
+
+        return $pqb->execute();
+    }
+
+    /**
      * @param array $rootProductModels
      */
-    private function computeProductModelAndProductModelDescendants(array $rootProductModels): void
+    private function computeProductModelAndProductModelDescendantsInBulk(CursorInterface $rootProductModels): void
     {
-        $this->productModelSaver->saveAll($rootProductModels);
+        $rootProductModelBulk = [];
         foreach ($rootProductModels as $rootProductModel) {
-            $this->productModelDescendantsSaver->save($rootProductModel);
+            $rootProductModelBulk[] = $rootProductModel;
+
+            if (\count($rootProductModelBulk) === self::BULK_SIZE) {
+                $this->productModelSaver->saveAll($rootProductModelBulk);
+                foreach ($rootProductModelBulk as $productModel) {
+                    $this->productModelDescendantsSaver->save($productModel);
+                    $this->stepExecution->incrementSummaryInfo('process');
+                }
+                $rootProductModelBulk = [];
+            }
+        }
+
+        $this->productModelSaver->saveAll($rootProductModelBulk);
+        foreach ($rootProductModelBulk as $productModel) {
+            $this->productModelDescendantsSaver->save($productModel);
             $this->stepExecution->incrementSummaryInfo('process');
         }
     }

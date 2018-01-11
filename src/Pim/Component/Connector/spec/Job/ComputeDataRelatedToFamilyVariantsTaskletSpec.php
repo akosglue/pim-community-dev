@@ -8,11 +8,15 @@ use Akeneo\Component\Batch\Item\InvalidItemException;
 use Akeneo\Component\Batch\Item\ItemReaderInterface;
 use Akeneo\Component\Batch\Model\StepExecution;
 use Akeneo\Component\StorageUtils\Cache\CacheClearerInterface;
+use Akeneo\Component\StorageUtils\Cursor\CursorInterface;
 use Akeneo\Component\StorageUtils\Saver\BulkSaverInterface;
 use Akeneo\Component\StorageUtils\Saver\SaverInterface;
 use PhpSpec\ObjectBehavior;
+use Pim\Bundle\EnrichBundle\Elasticsearch\ProductAndProductModelQueryBuilderFactory;
+use Pim\Bundle\EnrichBundle\ProductQueryBuilder\ProductAndProductModelQueryBuilder;
 use Pim\Component\Catalog\Model\FamilyInterface;
 use Pim\Component\Catalog\Model\ProductModelInterface;
+use Pim\Component\Catalog\Query\Filter\Operators;
 use Pim\Component\Catalog\Repository\FamilyRepositoryInterface;
 use Pim\Component\Catalog\Repository\ProductModelRepositoryInterface;
 use Pim\Component\Connector\Job\ComputeDataRelatedToFamilyVariantsTasklet;
@@ -22,7 +26,7 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
 {
     function let(
         FamilyRepositoryInterface $familyRepository,
-        ProductModelRepositoryInterface $productModelRepository,
+        ProductAndProductModelQueryBuilderFactory $productAndProductModelQueryBuilderFactory,
         ItemReaderInterface $familyReader,
         BulkSaverInterface $productModelSaver,
         SaverInterface $productModelDescendantsSaver,
@@ -30,7 +34,7 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
     ) {
         $this->beConstructedWith(
             $familyRepository,
-            $productModelRepository,
+            $productAndProductModelQueryBuilderFactory,
             $familyReader,
             $productModelSaver,
             $productModelDescendantsSaver,
@@ -46,16 +50,30 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
     function it_saves_the_product_model_and_its_descendants_belonging_to_the_family(
         $familyReader,
         $familyRepository,
-        $productModelRepository,
         $productModelSaver,
         $productModelDescendantsSaver,
+        $productAndProductModelQueryBuilderFactory,
         FamilyInterface $family,
         ProductModelInterface $rootProductModel,
-        StepExecution $stepExecution
+        StepExecution $stepExecution,
+        ProductAndProductModelQueryBuilder $pqb,
+        CursorInterface $cursor
     ) {
         $familyReader->read()->willReturn(['code' => 'my_family'], null);
         $familyRepository->findOneByIdentifier('my_family')->willReturn($family);
-        $productModelRepository->findRootProductModelsWithFamily($family)->willReturn([$rootProductModel]);
+
+        $family->getCode()->willReturn('family_code');
+
+        $productAndProductModelQueryBuilderFactory->create()->willReturn($pqb);
+        $pqb->addFilter('family', Operators::EQUALS, 'family_code')->shouldBeCalled();
+        $pqb->addFilter('parent', Operators::IS_EMPTY, null)->shouldBeCalled();
+        $pqb->execute()->willReturn($cursor);
+
+        $cursor->rewind()->shouldBeCalled();
+        $cursor->valid()->willReturn(true, false);
+        $cursor->next()->willReturn($rootProductModel);
+        $cursor->current()->willReturn($rootProductModel);
+
         $productModelSaver->saveAll([$rootProductModel])->shouldBeCalled();
         $productModelDescendantsSaver->save($rootProductModel)->shouldBeCalled();
 
@@ -68,23 +86,50 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
     function it_saves_the_product_models_and_its_descendants_belonging_to_the_families(
         $familyReader,
         $familyRepository,
-        $productModelRepository,
+        $productAndProductModelQueryBuilderFactory,
         $productModelSaver,
         $productModelDescendantsSaver,
         FamilyInterface $family1,
         FamilyInterface $family2,
         ProductModelInterface $rootProductModel1,
         ProductModelInterface $rootProductModel2,
-        StepExecution $stepExecution
+        StepExecution $stepExecution,
+        ProductAndProductModelQueryBuilder $pqb1,
+        ProductAndProductModelQueryBuilder $pqb2,
+        CursorInterface $cursor1,
+        CursorInterface $cursor2
     ) {
         $familyReader->read()->willReturn(['code' => 'first_family'], ['code' => 'second_family'], null);
         $familyRepository->findOneByIdentifier('first_family')->willReturn($family1);
-        $productModelRepository->findRootProductModelsWithFamily($family1)->willReturn([$rootProductModel1]);
+
+        $family1->getCode()->willReturn('first_family');
+        $family2->getCode()->willReturn('second_family');
+
+        $productAndProductModelQueryBuilderFactory->create()->willReturn($pqb1, $pqb2);
+
+        $pqb1->addFilter('family', Operators::EQUALS, 'first_family')->shouldBeCalled();
+        $pqb1->addFilter('parent', Operators::IS_EMPTY, null)->shouldBeCalled();
+        $pqb1->execute()->willReturn($cursor1);
+
+        $cursor1->rewind()->shouldBeCalled();
+        $cursor1->valid()->willReturn(true, false);
+        $cursor1->next()->willReturn($rootProductModel1);
+        $cursor1->current()->willReturn($rootProductModel1);
+
         $productModelSaver->saveAll([$rootProductModel1])->shouldBeCalled();
         $productModelDescendantsSaver->save($rootProductModel1)->shouldBeCalled();
 
         $familyRepository->findOneByIdentifier('second_family')->willReturn($family2);
-        $productModelRepository->findRootProductModelsWithFamily($family2)->willReturn([$rootProductModel2]);
+
+        $pqb2->addFilter('family', Operators::EQUALS, 'second_family')->shouldBeCalled();
+        $pqb2->addFilter('parent', Operators::IS_EMPTY, null)->shouldBeCalled();
+        $pqb2->execute()->willReturn($cursor2);
+
+        $cursor2->rewind()->shouldBeCalled();
+        $cursor2->valid()->willReturn(true, false);
+        $cursor2->next()->willReturn($rootProductModel2);
+        $cursor2->current()->willReturn($rootProductModel2);
+
         $productModelSaver->saveAll([$rootProductModel2])->shouldBeCalled();
         $productModelDescendantsSaver->save($rootProductModel2)->shouldBeCalled();
 
@@ -96,7 +141,7 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
     function it_skips_if_the_family_is_unknown(
         $familyReader,
         $familyRepository,
-        $productModelRepository,
+        $productAndProductModelQueryBuilderFactory,
         $productModelSaver,
         $productModelDescendantsSaver,
         StepExecution $stepExecution
@@ -106,7 +151,7 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
 
         $stepExecution->incrementSummaryInfo('skip')->shouldBeCalled();
 
-        $productModelRepository->findRootProductModelsWithFamily(Argument::any())->shouldNotBeCalled();
+        $productAndProductModelQueryBuilderFactory->create()->shouldNotBeCalled();
         $productModelSaver->saveAll(Argument::any())->shouldNotBeCalled();
         $productModelDescendantsSaver->save(Argument::any())->shouldNotBeCalled();
 
@@ -117,7 +162,7 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
     function it_handles_invalid_lines(
         $familyReader,
         $familyRepository,
-        $productModelRepository,
+        $productAndProductModelQueryBuilderFactory,
         $productModelSaver,
         $productModelDescendantsSaver,
         StepExecution $stepExecution
@@ -126,7 +171,7 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
         $familyReader->read()->willReturn(null);
 
         $familyRepository->findOneByIdentifier(Argument::any())->shouldNotBeCalled();
-        $productModelRepository->findRootProductModelsWithFamily(Argument::any())->shouldNotBeCalled();
+        $productAndProductModelQueryBuilderFactory->create()->shouldNotBeCalled();
         $productModelSaver->saveAll(Argument::any())->shouldNotBeCalled();
         $productModelDescendantsSaver->save(Argument::any())->shouldNotBeCalled();
 

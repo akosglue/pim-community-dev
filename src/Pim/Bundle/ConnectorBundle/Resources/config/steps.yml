@@ -68,7 +68,7 @@ services:
         class: '%pim_connector.tasklet.family.compute_data_related_to_family_variants.class%'
         arguments:
             - '@pim_catalog.repository.family'
-            - '@pim_catalog.repository.product_model'
+            - '@pim_enrich.query.product_and_product_model_query_builder_factory'
             - '@pim_connector.reader.file.csv_family'
             - '@pim_catalog.saver.product_model'
             - '@pim_catalog.saver.product_model_descendants'
@@ -406,7 +406,7 @@ services:
         class: '%pim_connector.tasklet.family.compute_data_related_to_family_variants.class%'
         arguments:
             - '@pim_catalog.repository.family'
-            - '@pim_catalog.repository.product_model'
+            - '@pim_enrich.query.product_and_product_model_query_builder_factory'
             - '@pim_connector.reader.file.xlsx_family'
             - '@pim_catalog.saver.product_model'
             - '@pim_catalog.saver.product_model_descendants'
