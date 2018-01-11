@@ -65,7 +65,7 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
         $family->getCode()->willReturn('family_code');
 
         $productAndProductModelQueryBuilderFactory->create()->willReturn($pqb);
-        $pqb->addFilter('family', Operators::EQUALS, 'family_code')->shouldBeCalled();
+        $pqb->addFilter('family', Operators::IN_LIST, ['family_code'])->shouldBeCalled();
         $pqb->addFilter('parent', Operators::IS_EMPTY, null)->shouldBeCalled();
         $pqb->execute()->willReturn($cursor);
 
@@ -107,7 +107,7 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
 
         $productAndProductModelQueryBuilderFactory->create()->willReturn($pqb1, $pqb2);
 
-        $pqb1->addFilter('family', Operators::EQUALS, 'first_family')->shouldBeCalled();
+        $pqb1->addFilter('family', Operators::IN_LIST, ['first_family'])->shouldBeCalled();
         $pqb1->addFilter('parent', Operators::IS_EMPTY, null)->shouldBeCalled();
         $pqb1->execute()->willReturn($cursor1);
 
@@ -121,7 +121,7 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
 
         $familyRepository->findOneByIdentifier('second_family')->willReturn($family2);
 
-        $pqb2->addFilter('family', Operators::EQUALS, 'second_family')->shouldBeCalled();
+        $pqb2->addFilter('family', Operators::IN_LIST, ['second_family'])->shouldBeCalled();
         $pqb2->addFilter('parent', Operators::IS_EMPTY, null)->shouldBeCalled();
         $pqb2->execute()->willReturn($cursor2);
 

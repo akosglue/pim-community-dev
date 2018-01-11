@@ -18,7 +18,7 @@ Feature: Import families
     And I launch the import job
     And I wait for the "csv_footwear_family_import" job to finish
     And I should see the text "Family import"
-    And I should see the text "Compute data related to family variants"
+    And I should see the text "Compute product models data"
     Then there should be the following family:
       | code     | attributes            | attribute_as_label | requirements-mobile | requirements-tablet | label-en_US |
       | tractors | sku,name,manufacturer | name               | sku,manufacturer    | sku,manufacturer    | Tractors    |
@@ -39,7 +39,7 @@ Feature: Import families
     And I launch the import job
     And I wait for the "csv_catalog_modeling_family_import" job to finish
     And I should see the text "Family import"
-    And I should see the text "Compute data related to family variants"
+    And I should see the text "Compute product models data"
     And the product model "model-braided-hat" should not have the following values "material"
 
   Scenario: Successfully update existing family and add a new one
@@ -94,7 +94,7 @@ Feature: Import families
     And I launch the import job
     And I wait for the "xlsx_catalog_modeling_family_import" job to finish
     And I should see the text "Family import"
-    And I should see the text "Compute data related to family variants"
+    And I should see the text "Compute product models data"
     And the product model "model-braided-hat" should not have the following values "material"
 
   @jira https://akeneo.atlassian.net/browse/PIM-6107
