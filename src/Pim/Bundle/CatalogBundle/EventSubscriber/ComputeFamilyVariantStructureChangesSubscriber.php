@@ -101,7 +101,7 @@ class ComputeFamilyVariantStructureChangesSubscriber implements EventSubscriberI
             return;
         }
 
-        if (!$event->hasArgument('unitary') || false === $event->getArgument('unitary')) {
+        if (!$event->hasArgument('unitary') || true !== $event->getArgument('unitary')) {
             return;
         }
 

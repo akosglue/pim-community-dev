@@ -8,18 +8,18 @@ use Akeneo\Component\Batch\Item\InitializableInterface;
 use Akeneo\Component\Batch\Item\InvalidItemException;
 use Akeneo\Component\Batch\Item\ItemReaderInterface;
 use Akeneo\Component\Batch\Model\StepExecution;
-use Akeneo\Component\Batch\Step\StepExecutionAwareInterface;
 use Akeneo\Component\StorageUtils\Cache\CacheClearerInterface;
 use Akeneo\Component\StorageUtils\Cursor\CursorInterface;
 use Akeneo\Component\StorageUtils\Saver\BulkSaverInterface;
 use Akeneo\Component\StorageUtils\Saver\SaverInterface;
+use Pim\Component\Catalog\EntityWithFamilyVariant\KeepOnlyValuesForProductModelsTrees;
 use Pim\Component\Catalog\Model\FamilyInterface;
 use Pim\Component\Catalog\Model\ProductModelInterface;
 use Pim\Component\Catalog\Query\Filter\Operators;
 use Pim\Component\Catalog\Query\ProductQueryBuilderFactoryInterface;
 use Pim\Component\Catalog\Repository\FamilyRepositoryInterface;
-use Pim\Component\Catalog\Repository\ProductModelRepositoryInterface;
 use Pim\Component\Connector\Step\TaskletInterface;
+use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 /**
  * Foreach line of the file to import we will:
@@ -33,7 +33,7 @@ use Pim\Component\Connector\Step\TaskletInterface;
  */
 class ComputeDataRelatedToFamilyVariantsTasklet implements TaskletInterface, InitializableInterface
 {
-    private const BULK_SIZE = 100;
+    private const BULK_SIZE = 5;
 
     /** @var StepExecution */
     private $stepExecution;
@@ -56,10 +56,18 @@ class ComputeDataRelatedToFamilyVariantsTasklet implements TaskletInterface, Ini
     /** @var ProductQueryBuilderFactoryInterface */
     private $productQueryBuilderFactory;
 
+    /** @var KeepOnlyValuesForProductModelsTrees */
+    private $keepOnlyValuesForProductModelTrees;
+
+    /** @var ValidatorInterface */
+    private $validator;
+
     /**
      * @param FamilyRepositoryInterface           $familyRepository
      * @param ProductQueryBuilderFactoryInterface $productQueryBuilderFactory
      * @param ItemReaderInterface                 $familyReader
+     * @param KeepOnlyValuesForProductModelsTrees $keepOnlyValuesForProductModelsTrees
+     * @param ValidatorInterface                  $validator
      * @param BulkSaverInterface                  $productModelSaver
      * @param SaverInterface                      $productModelDescendantsSaver
      * @param CacheClearerInterface               $cacheClearer
@@ -68,6 +76,8 @@ class ComputeDataRelatedToFamilyVariantsTasklet implements TaskletInterface, Ini
         FamilyRepositoryInterface $familyRepository,
         ProductQueryBuilderFactoryInterface $productQueryBuilderFactory,
         ItemReaderInterface $familyReader,
+        KeepOnlyValuesForProductModelsTrees $keepOnlyValuesForProductModelsTrees,
+        ValidatorInterface $validator,
         BulkSaverInterface $productModelSaver,
         SaverInterface $productModelDescendantsSaver,
         CacheClearerInterface $cacheClearer
@@ -78,6 +88,8 @@ class ComputeDataRelatedToFamilyVariantsTasklet implements TaskletInterface, Ini
         $this->productModelSaver = $productModelSaver;
         $this->productModelDescendantsSaver = $productModelDescendantsSaver;
         $this->cacheClearer = $cacheClearer;
+        $this->keepOnlyValuesForProductModelTrees = $keepOnlyValuesForProductModelsTrees;
+        $this->validator = $validator;
     }
 
     /**
@@ -121,9 +133,6 @@ class ComputeDataRelatedToFamilyVariantsTasklet implements TaskletInterface, Ini
      */
     public function initialize()
     {
-        if ($this->familyReader instanceof StepExecutionAwareInterface) {
-            $this->familyReader->setStepExecution($this->stepExecution);
-        }
         $this->cacheClearer->clear();
     }
 
@@ -142,7 +151,7 @@ class ComputeDataRelatedToFamilyVariantsTasklet implements TaskletInterface, Ini
     }
 
     /**
-     * @param array $rootProductModels
+     * @param CursorInterface $rootProductModels
      */
     private function computeProductModelDataInBulk(CursorInterface $rootProductModels): void
     {
@@ -162,12 +171,31 @@ class ComputeDataRelatedToFamilyVariantsTasklet implements TaskletInterface, Ini
     /**
      * @param ProductModelInterface[] $rootProductModelBulk
      */
-    private function computeProductModelData($rootProductModelBulk): void
+    private function computeProductModelData(array $rootProductModelBulk): void
     {
+        $this->keepOnlyValuesForProductModelTrees->update($rootProductModelBulk);
+        $this->validateProductModelTree($rootProductModelBulk);
         $this->productModelSaver->saveAll($rootProductModelBulk);
         foreach ($rootProductModelBulk as $productModel) {
             $this->productModelDescendantsSaver->save($productModel);
             $this->stepExecution->incrementSummaryInfo('process');
+        }
+    }
+
+    private function validateProductModelTree(array $entitiesWithFamilyVariant)
+    {
+
+        foreach ($entitiesWithFamilyVariant as $entityWithFamilyVariant) {
+            $violations = $this->validator->validate($entityWithFamilyVariant);
+            if (!$entityWithFamilyVariant instanceof ProductModelInterface) {
+                continue;
+            }
+
+            if ($entityWithFamilyVariant->hasProductModels()) {
+                $this->validateProductModelTree($entityWithFamilyVariant->getProductModels()->toArray());
+            } elseif (!$entityWithFamilyVariant->getProducts()->isEmpty()) {
+                $this->validateProductModelTree($entityWithFamilyVariant->getProducts()->toArray());
+            }
         }
     }
 }
