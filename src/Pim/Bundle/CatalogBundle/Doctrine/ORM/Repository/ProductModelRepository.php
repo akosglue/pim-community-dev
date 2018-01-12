@@ -3,7 +3,6 @@
 namespace Pim\Bundle\CatalogBundle\Doctrine\ORM\Repository;
 
 use Doctrine\ORM\EntityRepository;
-use Pim\Component\Catalog\Model\FamilyInterface;
 use Pim\Component\Catalog\Model\FamilyVariantInterface;
 use Pim\Component\Catalog\Model\ProductModelInterface;
 use Pim\Component\Catalog\Model\VariantProduct;
@@ -169,6 +168,21 @@ class ProductModelRepository extends EntityRepository implements ProductModelRep
     /**
      * {@inheritdoc}
      */
+    public function findRootProductModels(FamilyVariantInterface $familyVariant): array
+    {
+        $qb = $this
+            ->createQueryBuilder('pm')
+            ->where('pm.parent IS NULL')
+            ->andWhere('pm.familyVariant = :familyVariant')
+            ->setParameter('familyVariant', $familyVariant->getId())
+        ;
+
+        return $qb->getQuery()->execute();
+    }
+
+    /**
+     * {@inheritdoc}
+     */
     public function searchLastLevelByCode(
         FamilyVariantInterface $familyVariant,
         string $search,
@@ -187,19 +201,6 @@ class ProductModelRepository extends EntityRepository implements ProductModelRep
         $qb = ($familyVariant->getNumberOfLevel() <= 1) ?
             $qb->andWhere('pm.parent IS NULL')->andWhere('pm.familyVariant = :familyVariant') :
             $qb->innerJoin('pm.parent', 'ppm')->andWhere('ppm.familyVariant = :familyVariant');
-
-        return $qb->getQuery()->execute();
-    }
-
-    public function findRootProductModelsWithFamily(FamilyInterface $family): array
-    {
-        $qb = $this
-            ->createQueryBuilder('pm')
-            ->where('pm.parent IS NULL')
-            ->andWhere('fv.family = :family')
-            ->join('pm.familyVariant', 'fv')
-            ->setParameter('family', $family->getId())
-        ;
 
         return $qb->getQuery()->execute();
     }

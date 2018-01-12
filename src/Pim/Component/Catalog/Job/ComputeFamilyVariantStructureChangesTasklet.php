@@ -5,13 +5,11 @@ declare(strict_types=1);
 namespace Pim\Component\Catalog\Job;
 
 use Akeneo\Component\Batch\Model\StepExecution;
-use Akeneo\Component\StorageUtils\Detacher\ObjectDetacherInterface;
 use Akeneo\Component\StorageUtils\Saver\SaverInterface;
 use Doctrine\Common\Persistence\ObjectRepository;
 use Doctrine\ORM\EntityRepository;
-use Pim\Component\Catalog\EntityWithFamilyVariant\KeepOnlyValuesForVariation;
-use Pim\Component\Catalog\Model\EntityWithFamilyVariantInterface;
-use Pim\Component\Catalog\Model\ProductModel;
+use Pim\Component\Catalog\EntityWithFamilyVariant\KeepOnlyValuesForProductModelsTrees;
+use Pim\Component\Catalog\Model\ProductInterface;
 use Pim\Component\Catalog\Model\ProductModelInterface;
 use Pim\Component\Catalog\Repository\ProductModelRepositoryInterface;
 use Pim\Component\Connector\Step\TaskletInterface;
@@ -42,20 +40,20 @@ class ComputeFamilyVariantStructureChangesTasklet implements TaskletInterface
     /** @var SaverInterface */
     private $productModelSaver;
 
-    /** @var KeepOnlyValuesForVariation */
-    private $keepOnlyValuesForVariation;
+    /** @var KeepOnlyValuesForProductModelsTrees */
+    private $keepOnlyValuesForProductModelsTrees;
 
     /** @var ValidatorInterface */
     private $validator;
 
     /**
-     * @param EntityRepository                               $familyVariantRepository
-     * @param ObjectRepository                               $variantProductRepository
-     * @param ProductModelRepositoryInterface                $productModelRepository
-     * @param SaverInterface                                 $productSaver
-     * @param SaverInterface                                 $productModelSaver
-     * @param KeepOnlyValuesForVariation                     $keepOnlyValuesForVariation
-     * @param ValidatorInterface                             $validator
+     * @param EntityRepository                    $familyVariantRepository
+     * @param ObjectRepository                    $variantProductRepository
+     * @param ProductModelRepositoryInterface     $productModelRepository
+     * @param SaverInterface                      $productSaver
+     * @param SaverInterface                      $productModelSaver
+     * @param KeepOnlyValuesForProductModelsTrees $keepOnlyValuesForProductModelsTrees
+     * @param ValidatorInterface                  $validator
      */
     public function __construct(
         EntityRepository $familyVariantRepository,
@@ -63,7 +61,7 @@ class ComputeFamilyVariantStructureChangesTasklet implements TaskletInterface
         ProductModelRepositoryInterface $productModelRepository,
         SaverInterface $productSaver,
         SaverInterface $productModelSaver,
-        KeepOnlyValuesForVariation $keepOnlyValuesForVariation,
+        KeepOnlyValuesForProductModelsTrees $keepOnlyValuesForProductModelsTrees,
         ValidatorInterface $validator
     ) {
         $this->familyVariantRepository = $familyVariantRepository;
@@ -71,7 +69,7 @@ class ComputeFamilyVariantStructureChangesTasklet implements TaskletInterface
         $this->productModelRepository = $productModelRepository;
         $this->productSaver = $productSaver;
         $this->productModelSaver = $productModelSaver;
-        $this->keepOnlyValuesForVariation = $keepOnlyValuesForVariation;
+        $this->keepOnlyValuesForProductModelsTrees = $keepOnlyValuesForProductModelsTrees;
         $this->validator = $validator;
     }
 
@@ -93,57 +91,64 @@ class ComputeFamilyVariantStructureChangesTasklet implements TaskletInterface
         $familyVariants = $this->familyVariantRepository->findBy(['code' => $familyVariantCodes]);
 
         foreach ($familyVariants as $familyVariant) {
-            $levelNumber = $familyVariant->getNumberOfLevel();
-
-            while ($levelNumber >= ProductModel::ROOT_VARIATION_LEVEL) {
-                if (ProductModel::ROOT_VARIATION_LEVEL === $levelNumber) {
-                    $entitiesWithFamilyVariant = $this->productModelRepository->findRootProductModels($familyVariant);
-                } elseif ($levelNumber === $familyVariant->getNumberOfLevel()) {
-                    $entitiesWithFamilyVariant = $this->variantProductRepository->findBy([
-                        'familyVariant' => $familyVariant
-                    ]);
-                } else {
-                    $entitiesWithFamilyVariant = $this->productModelRepository->findSubProductModels($familyVariant);
-                }
-
-                $this->updateValuesOfEntities($entitiesWithFamilyVariant);
-                $levelNumber--;
+            $rootProductModels = $this->productModelRepository->findRootProductModels($familyVariant);
+            foreach ($rootProductModels as $rootProductModel) {
+                $this->computeProductModelData($rootProductModel);
             }
         }
     }
 
     /**
-     * @param EntityWithFamilyVariantInterface[] $entities
+     * @param ProductModelInterface $rootProductModel
      */
-    private function updateValuesOfEntities(array $entities): void
+    private function computeProductModelData(ProductModelInterface $rootProductModel): void
     {
-        $this->keepOnlyValuesForVariation->updateEntitiesWithFamilyVariant($entities);
+        $this->keepOnlyValuesForProductModelsTrees->update([$rootProductModel]);
+        $this->validateAndSaveVariantTree([$rootProductModel]);
+    }
 
-        foreach ($entities as $entity) {
-            $violations = $this->validator->validate($entity);
+    /**
+     * Recursively validates each elements of the tree and save them if they are valid.
+     *
+     * @param array $entitiesWithFamilyVariant
+     */
+    private function validateAndSaveVariantTree(array $entitiesWithFamilyVariant)
+    {
+        foreach ($entitiesWithFamilyVariant as $entityWithFamilyVariant) {
+            $violations = $this->validator->validate($entityWithFamilyVariant);
 
-            if ($violations->count() === 0) {
-                if ($entity instanceof ProductModelInterface) {
-                    $this->productModelSaver->save($entity);
-                } else {
-                    $this->productSaver->save($entity);
-                }
-            } else {
-                if ($entity instanceof ProductModelInterface) {
+            if ($violations->count() > 0) {
+                if ($entityWithFamilyVariant instanceof ProductModelInterface) {
                     throw new \LogicException(
                         sprintf(
                             'Validation error for ProductModel with code "%s" during family variant structure change',
-                            $entity->getCode()
-                        )
-                    );
-                } else {
-                    throw new \LogicException(
-                        sprintf(
-                            'Validation error for Product with identifier "%s" during family variant structure change',
-                            $entity->getIdentifier()
+                            $entityWithFamilyVariant->getCode()
                         )
                     );
                 }
+                if ($entityWithFamilyVariant instanceof ProductInterface) {
+                    throw new \LogicException(
+                        sprintf(
+                            'Validation error for Product with identifier "%s" during family variant structure change',
+                            $entityWithFamilyVariant->getIdentifier()
+                        )
+                    );
+                }
+            }
+            if ($entityWithFamilyVariant instanceof ProductModelInterface) {
+                $this->productModelSaver->save($entityWithFamilyVariant);
+            } else {
+                $this->productSaver->save($entityWithFamilyVariant);
+            }
+
+            if (!$entityWithFamilyVariant instanceof ProductModelInterface) {
+                continue;
+            }
+
+            if ($entityWithFamilyVariant->hasProductModels()) {
+                $this->validateAndSaveVariantTree($entityWithFamilyVariant->getProductModels()->toArray());
+            } elseif (!$entityWithFamilyVariant->getProducts()->isEmpty()) {
+                $this->validateAndSaveVariantTree($entityWithFamilyVariant->getProducts()->toArray());
             }
         }
     }
