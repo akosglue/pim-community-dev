@@ -11,7 +11,6 @@ use Akeneo\Component\Batch\Model\StepExecution;
 use Akeneo\Component\StorageUtils\Cache\CacheClearerInterface;
 use Akeneo\Component\StorageUtils\Cursor\CursorInterface;
 use Akeneo\Component\StorageUtils\Saver\BulkSaverInterface;
-use Akeneo\Component\StorageUtils\Saver\SaverInterface;
 use Pim\Component\Catalog\EntityWithFamilyVariant\KeepOnlyValuesForProductModelsTrees;
 use Pim\Component\Catalog\Model\FamilyInterface;
 use Pim\Component\Catalog\Model\ProductModelInterface;
@@ -33,8 +32,6 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
  */
 class ComputeDataRelatedToFamilyVariantsTasklet implements TaskletInterface, InitializableInterface
 {
-    private const BULK_SIZE = 5;
-
     /** @var StepExecution */
     private $stepExecution;
 
@@ -47,8 +44,8 @@ class ComputeDataRelatedToFamilyVariantsTasklet implements TaskletInterface, Ini
     /** @var BulkSaverInterface */
     private $productModelSaver;
 
-    /** @var SaverInterface */
-    private $productModelDescendantsSaver;
+    /** @var BulkSaverInterface */
+    private $productSaver;
 
     /** @var CacheClearerInterface */
     private $cacheClearer;
@@ -69,7 +66,7 @@ class ComputeDataRelatedToFamilyVariantsTasklet implements TaskletInterface, Ini
      * @param KeepOnlyValuesForProductModelsTrees $keepOnlyValuesForProductModelsTrees
      * @param ValidatorInterface                  $validator
      * @param BulkSaverInterface                  $productModelSaver
-     * @param SaverInterface                      $productModelDescendantsSaver
+     * @param BulkSaverInterface                  $productSaver
      * @param CacheClearerInterface               $cacheClearer
      */
     public function __construct(
@@ -79,14 +76,14 @@ class ComputeDataRelatedToFamilyVariantsTasklet implements TaskletInterface, Ini
         KeepOnlyValuesForProductModelsTrees $keepOnlyValuesForProductModelsTrees,
         ValidatorInterface $validator,
         BulkSaverInterface $productModelSaver,
-        SaverInterface $productModelDescendantsSaver,
+        BulkSaverInterface $productSaver,
         CacheClearerInterface $cacheClearer
     ) {
         $this->familyReader = $familyReader;
         $this->familyRepository = $familyRepository;
         $this->productQueryBuilderFactory = $productQueryBuilderFactory;
         $this->productModelSaver = $productModelSaver;
-        $this->productModelDescendantsSaver = $productModelDescendantsSaver;
+        $this->productSaver = $productSaver;
         $this->cacheClearer = $cacheClearer;
         $this->keepOnlyValuesForProductModelTrees = $keepOnlyValuesForProductModelsTrees;
         $this->validator = $validator;
@@ -123,8 +120,9 @@ class ComputeDataRelatedToFamilyVariantsTasklet implements TaskletInterface, Ini
                 continue;
             }
 
-            $rootProductModels = $this->getRootProductModelsForFamily($family);
-            $this->computeProductModelDataInBulk($rootProductModels);
+            foreach($this->getRootProductModelsForFamily($family) as $rootProductModel) {
+                $this->computeProductModelData($rootProductModel);
+            }
         }
     }
 
@@ -151,51 +149,51 @@ class ComputeDataRelatedToFamilyVariantsTasklet implements TaskletInterface, Ini
     }
 
     /**
-     * @param CursorInterface $rootProductModels
+     * @param ProductModelInterface $rootProductModel
      */
-    private function computeProductModelDataInBulk(CursorInterface $rootProductModels): void
+    private function computeProductModelData(ProductModelInterface $rootProductModel): void
     {
-        $rootProductModelBulk = [];
-        foreach ($rootProductModels as $rootProductModel) {
-            $rootProductModelBulk[] = $rootProductModel;
-
-            if (\count($rootProductModelBulk) === self::BULK_SIZE) {
-                $this->computeProductModelData($rootProductModelBulk);
-                $rootProductModelBulk = [];
-            }
-        }
-
-        $this->computeProductModelData($rootProductModelBulk);
+        $this->keepOnlyValuesForProductModelTrees->update([$rootProductModel]);
+        $this->validateAndSaveVariantTree([$rootProductModel]);
     }
 
-    /**
-     * @param ProductModelInterface[] $rootProductModelBulk
-     */
-    private function computeProductModelData(array $rootProductModelBulk): void
+    private function validateAndSaveVariantTree(array $entitiesWithFamilyVariant)
     {
-        $this->keepOnlyValuesForProductModelTrees->update($rootProductModelBulk);
-        $this->validateProductModelTree($rootProductModelBulk);
-        $this->productModelSaver->saveAll($rootProductModelBulk);
-        foreach ($rootProductModelBulk as $productModel) {
-            $this->productModelDescendantsSaver->save($productModel);
-            $this->stepExecution->incrementSummaryInfo('process');
-        }
-    }
-
-    private function validateProductModelTree(array $entitiesWithFamilyVariant)
-    {
+        $validProductModels = [];
+        $validProducts = [];
 
         foreach ($entitiesWithFamilyVariant as $entityWithFamilyVariant) {
             $violations = $this->validator->validate($entityWithFamilyVariant);
+
+            if ($violations->count() > 0) {
+                $this->stepExecution->incrementSummaryInfo('skip');
+            } else {
+                if ($entityWithFamilyVariant instanceof ProductModelInterface) {
+                    $validProductModels[] = $entityWithFamilyVariant;
+                } else {
+                    $validProducts[] = $entityWithFamilyVariant;
+                }
+
+                $this->stepExecution->incrementSummaryInfo('process');
+            }
+
             if (!$entityWithFamilyVariant instanceof ProductModelInterface) {
                 continue;
             }
 
             if ($entityWithFamilyVariant->hasProductModels()) {
-                $this->validateProductModelTree($entityWithFamilyVariant->getProductModels()->toArray());
+                $this->validateAndSaveVariantTree($entityWithFamilyVariant->getProductModels()->toArray());
             } elseif (!$entityWithFamilyVariant->getProducts()->isEmpty()) {
-                $this->validateProductModelTree($entityWithFamilyVariant->getProducts()->toArray());
+                $this->validateAndSaveVariantTree($entityWithFamilyVariant->getProducts()->toArray());
             }
+        }
+
+        if (!empty($validProductModels)) {
+            $this->productModelSaver->saveAll($validProductModels);
+        }
+
+        if (!empty($validProducts)) {
+            $this->productSaver->saveAll($validProducts);
         }
     }
 }

@@ -35,7 +35,7 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
         KeepOnlyValuesForProductModelsTrees $keepOnlyValuesForProductModelsTrees,
         ValidatorInterface $validator,
         BulkSaverInterface $productModelSaver,
-        SaverInterface $productModelDescendantsSaver,
+        BulkSaverInterface $productSaver,
         CacheClearerInterface $cacheClearer
     ) {
         $this->beConstructedWith(
@@ -45,7 +45,7 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
             $keepOnlyValuesForProductModelsTrees,
             $validator,
             $productModelSaver,
-            $productModelDescendantsSaver,
+            $productSaver,
             $cacheClearer
         );
     }
@@ -61,7 +61,7 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
         $keepOnlyValuesForProductModelsTrees,
         $validator,
         $productModelSaver,
-        $productModelDescendantsSaver,
+        $productSaver,
         $productModelQueryBuilderFactory,
         FamilyInterface $family,
         ProductModelInterface $rootProductModel,
@@ -98,67 +98,25 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
         $subProductModel->hasProductModels()->willReturn(false);
         $subProductModel->getProducts()->willReturn($products);
 
-        $products->isEmpty()->willReturn(false);{
-            $familyReader->read()->willReturn(['code' => 'my_family'], null);
-            $familyRepository->findOneByIdentifier('my_family')->willReturn($family);
-
-            $family->getCode()->willReturn('family_code');
-
-            $productModelQueryBuilderFactory->create()->willReturn($pqb);
-            $pqb->addFilter('family', Operators::IN_LIST, ['family_code'])->shouldBeCalled();
-            $pqb->addFilter('parent', Operators::IS_EMPTY, null)->shouldBeCalled();
-            $pqb->execute()->willReturn($cursor);
-
-            $cursor->rewind()->shouldBeCalled();
-            $cursor->valid()->willReturn(true, false);
-            $cursor->next()->willReturn($rootProductModel);
-            $cursor->current()->willReturn($rootProductModel);
-
-            $rootProductModel->hasProductModels()->willReturn(true);
-            $rootProductModel->getProductModels()->willReturn($subProductModels);
-
-            $subProductModels->toArray()->willReturn([$subProductModel]);
-            $subProductModel->hasProductModels()->willReturn(false);
-            $subProductModel->getProducts()->willReturn($products);
-
-            $products->isEmpty()->willReturn(false);
-            $products->toArray()->willReturn([$product]);
-
-            $keepOnlyValuesForProductModelsTrees->update([$rootProductModel])->shouldBeCalled();
-
-            $rootProductModelViolationLists->count()->willReturn(0);
-            $subProductModelViolationLists->count()->willReturn(0);
-            $productViolationLists->count()->willReturn(0);
-            $validator->validate($rootProductModel)
-                ->shouldBeCalled()
-                ->willReturn($rootProductModelViolationLists);
-            $validator->validate($subProductModel)->willReturn($subProductModelViolationLists);
-            $validator->validate($product)->willReturn($productViolationLists);
-
-            $productModelSaver->saveAll([$rootProductModel])->shouldBeCalled();
-            $productModelSaver->save($rootProductModel)->shouldBeCalled();
-
-            $stepExecution->incrementSummaryInfo('process')->shouldBeCalled();
-
-            $this->setStepExecution($stepExecution);
-            $this->execute();
-        }
-
+        $products->isEmpty()->willReturn(false);
         $products->toArray()->willReturn([$product]);
 
         $keepOnlyValuesForProductModelsTrees->update([$rootProductModel])->shouldBeCalled();
 
         $rootProductModelViolationLists->count()->willReturn(0);
         $subProductModelViolationLists->count()->willReturn(0);
-        $rootProductModelViolationLists->count()->willReturn(0);
+        $productViolationLists->count()->willReturn(0);
+
         $validator->validate($rootProductModel)->willReturn($rootProductModelViolationLists);
         $validator->validate($subProductModel)->willReturn($subProductModelViolationLists);
         $validator->validate($product)->willReturn($productViolationLists);
 
         $productModelSaver->saveAll([$rootProductModel])->shouldBeCalled();
-        $productModelSaver->save($rootProductModel)->shouldBeCalled();
+        $productModelSaver->saveAll([$subProductModel])->shouldBeCalled();
+        $productSaver->saveAll([$product])->shouldBeCalled();
 
-        $stepExecution->incrementSummaryInfo('process')->shouldBeCalled();
+        $stepExecution->incrementSummaryInfo('process')->shouldBeCalledTimes(3);
+        $stepExecution->incrementSummaryInfo('skip')->shouldNotBeCalled();
 
         $this->setStepExecution($stepExecution);
         $this->execute();
@@ -170,7 +128,7 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
         $keepOnlyValuesForProductModelsTrees,
         $validator,
         $productModelSaver,
-        $productModelDescendantsSaver,
+        $productSaver,
         $productModelQueryBuilderFactory,
         FamilyInterface $family1,
         FamilyInterface $family2,
@@ -225,8 +183,13 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
         $validator->validate($subProductModel1)->willReturn($subProductModelViolationLists1);
         $validator->validate($product1)->willReturn($productViolationLists1);
 
+        $rootProductModelViolationLists1->count()->willReturn(0);
+        $subProductModelViolationLists1->count()->willReturn(0);
+        $productViolationLists1->count()->willReturn(0);
+
         $productModelSaver->saveAll([$rootProductModel1])->shouldBeCalled();
-        $productModelSaver->save($rootProductModel1)->shouldBeCalled();
+        $productModelSaver->saveAll([$subProductModel1])->shouldBeCalled();
+        $productSaver->saveAll([$product1])->shouldBeCalled();
 
         $familyRepository->findOneByIdentifier('second_family')->willReturn($family2);
 
@@ -249,10 +212,13 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
         $validator->validate($rootProductModel2)->willReturn($rootProductModelViolationLists2);
         $validator->validate($product2)->willReturn($productViolationLists2);
 
-        $productModelSaver->saveAll([$rootProductModel2])->shouldBeCalled();
-        $productModelSaver->save($rootProductModel2)->shouldBeCalled();
+        $rootProductModelViolationLists2->count()->willReturn(0);
+        $productViolationLists2->count()->willReturn(0);
 
-        $stepExecution->incrementSummaryInfo('process')->shouldBeCalledTimes(2);
+        $productModelSaver->saveAll([$rootProductModel2])->shouldBeCalled();
+        $productSaver->saveAll([$product2])->shouldBeCalled();
+
+        $stepExecution->incrementSummaryInfo('process')->shouldBeCalledTimes(5);
         $this->setStepExecution($stepExecution);
         $this->execute();
     }
@@ -262,7 +228,7 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
         $familyRepository,
         $productModelQueryBuilderFactory,
         $productModelSaver,
-        $productModelDescendantsSaver,
+        $productSaver,
         StepExecution $stepExecution
     ) {
         $familyReader->read()->willReturn(['code' => 'unkown_family'], null);
@@ -272,7 +238,6 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
 
         $productModelQueryBuilderFactory->create()->shouldNotBeCalled();
         $productModelSaver->saveAll(Argument::any())->shouldNotBeCalled();
-        $productModelSaver->save(Argument::any())->shouldNotBeCalled();
 
         $this->setStepExecution($stepExecution);
         $this->execute();
@@ -283,7 +248,7 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
         $familyRepository,
         $productModelQueryBuilderFactory,
         $productModelSaver,
-        $productModelDescendantsSaver,
+        $productSaver,
         StepExecution $stepExecution
     ) {
         $familyReader->read()->willThrow(InvalidItemException::class);
@@ -292,7 +257,6 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
         $familyRepository->findOneByIdentifier(Argument::any())->shouldNotBeCalled();
         $productModelQueryBuilderFactory->create()->shouldNotBeCalled();
         $productModelSaver->saveAll(Argument::any())->shouldNotBeCalled();
-        $productModelSaver->save(Argument::any())->shouldNotBeCalled();
 
         $this->setStepExecution($stepExecution);
         $this->execute();

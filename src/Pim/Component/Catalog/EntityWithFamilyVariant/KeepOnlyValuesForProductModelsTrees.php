@@ -32,7 +32,8 @@ class KeepOnlyValuesForProductModelsTrees
      */
     public function update(array $entitiesWithFamilyVariant): void
     {
-        $this->keepOnlyValuesForVariation->updateEntitiesWithFamilyVariant([$entitiesWithFamilyVariant]);
+        $this->keepOnlyValuesForVariation->updateEntitiesWithFamilyVariant($entitiesWithFamilyVariant);
+
         foreach ($entitiesWithFamilyVariant as $entityWithValue) {
             if (!$entityWithValue instanceof ProductModelInterface) {
                 break;
