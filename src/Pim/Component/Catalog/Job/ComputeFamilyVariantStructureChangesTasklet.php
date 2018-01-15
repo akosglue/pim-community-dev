@@ -9,6 +9,7 @@ use Akeneo\Component\StorageUtils\Saver\SaverInterface;
 use Doctrine\Common\Persistence\ObjectRepository;
 use Doctrine\ORM\EntityRepository;
 use Pim\Component\Catalog\EntityWithFamilyVariant\KeepOnlyValuesForProductModelsTrees;
+use Pim\Component\Catalog\Model\EntityWithFamilyVariantInterface;
 use Pim\Component\Catalog\Model\ProductInterface;
 use Pim\Component\Catalog\Model\ProductModelInterface;
 use Pim\Component\Catalog\Repository\ProductModelRepositoryInterface;
@@ -93,18 +94,10 @@ class ComputeFamilyVariantStructureChangesTasklet implements TaskletInterface
         foreach ($familyVariants as $familyVariant) {
             $rootProductModels = $this->productModelRepository->findRootProductModels($familyVariant);
             foreach ($rootProductModels as $rootProductModel) {
-                $this->computeProductModelData($rootProductModel);
+                $this->keepOnlyValuesForProductModelsTrees->update([$rootProductModel]);
+                $this->validateAndSaveVariantTree([$rootProductModel]);
             }
         }
-    }
-
-    /**
-     * @param ProductModelInterface $rootProductModel
-     */
-    private function computeProductModelData(ProductModelInterface $rootProductModel): void
-    {
-        $this->keepOnlyValuesForProductModelsTrees->update([$rootProductModel]);
-        $this->validateAndSaveVariantTree([$rootProductModel]);
     }
 
     /**
@@ -114,42 +107,63 @@ class ComputeFamilyVariantStructureChangesTasklet implements TaskletInterface
      */
     private function validateAndSaveVariantTree(array $entitiesWithFamilyVariant)
     {
-        foreach ($entitiesWithFamilyVariant as $entityWithFamilyVariant) {
-            $violations = $this->validator->validate($entityWithFamilyVariant);
+        $updatedEntities = [];
+        foreach ($entitiesWithFamilyVariant as $updatedEntity) {
+            $this->validateEntity($updatedEntity);
+            $updatedEntities[] = $updatedEntity;
+        }
 
-            if ($violations->count() > 0) {
-                if ($entityWithFamilyVariant instanceof ProductModelInterface) {
-                    throw new \LogicException(
-                        sprintf(
-                            'Validation error for ProductModel with code "%s" during family variant structure change',
-                            $entityWithFamilyVariant->getCode()
-                        )
-                    );
-                }
-                if ($entityWithFamilyVariant instanceof ProductInterface) {
-                    throw new \LogicException(
-                        sprintf(
-                            'Validation error for Product with identifier "%s" during family variant structure change',
-                            $entityWithFamilyVariant->getIdentifier()
-                        )
-                    );
-                }
-            }
-            if ($entityWithFamilyVariant instanceof ProductModelInterface) {
-                $this->productModelSaver->save($entityWithFamilyVariant);
-            } else {
-                $this->productSaver->save($entityWithFamilyVariant);
-            }
+        foreach ($updatedEntities as $updatedEntity) {
+            $this->saveEntity($updatedEntity);
 
-            if (!$entityWithFamilyVariant instanceof ProductModelInterface) {
+            if (!$updatedEntity instanceof ProductModelInterface) {
                 continue;
             }
 
-            if ($entityWithFamilyVariant->hasProductModels()) {
-                $this->validateAndSaveVariantTree($entityWithFamilyVariant->getProductModels()->toArray());
-            } elseif (!$entityWithFamilyVariant->getProducts()->isEmpty()) {
-                $this->validateAndSaveVariantTree($entityWithFamilyVariant->getProducts()->toArray());
+            if ($updatedEntity->hasProductModels()) {
+                $this->validateAndSaveVariantTree($updatedEntity->getProductModels()->toArray());
+            } elseif (!$updatedEntity->getProducts()->isEmpty()) {
+                $this->validateAndSaveVariantTree($updatedEntity->getProducts()->toArray());
             }
+        }
+    }
+
+    /**
+     * @param EntityWithFamilyVariantInterface $entityWithFamilyVariant
+     */
+    private function validateEntity(EntityWithFamilyVariantInterface $entityWithFamilyVariant): void
+    {
+        $violations = $this->validator->validate($entityWithFamilyVariant);
+
+        if ($violations->count() > 0) {
+            if ($entityWithFamilyVariant instanceof ProductModelInterface) {
+                throw new \LogicException(
+                    sprintf(
+                        'Validation error for ProductModel with code "%s" during family variant structure change',
+                        $entityWithFamilyVariant->getCode()
+                    )
+                );
+            }
+            if ($entityWithFamilyVariant instanceof ProductInterface) {
+                throw new \LogicException(
+                    sprintf(
+                        'Validation error for Product with identifier "%s" during family variant structure change',
+                        $entityWithFamilyVariant->getIdentifier()
+                    )
+                );
+            }
+        }
+    }
+
+    /**
+     * @param EntityWithFamilyVariantInterface $entityWithFamilyVariant
+     */
+    private function saveEntity(EntityWithFamilyVariantInterface $entityWithFamilyVariant): void
+    {
+        if ($entityWithFamilyVariant instanceof ProductModelInterface) {
+            $this->productModelSaver->save($entityWithFamilyVariant);
+        } else {
+            $this->productSaver->save($entityWithFamilyVariant);
         }
     }
 }
