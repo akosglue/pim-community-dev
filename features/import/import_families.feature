@@ -23,7 +23,7 @@ Feature: Import families
       | code     | attributes            | attribute_as_label | requirements-mobile | requirements-tablet | label-en_US |
       | tractors | sku,name,manufacturer | name               | sku,manufacturer    | sku,manufacturer    | Tractors    |
 
-  Scenario: Successfully update an existing family computes all its root product models in a dedicated step for csv
+  Scenario: Successfully update an existing family computes all product models data in a dedicated step for csv
     Given the "catalog_modeling" catalog configuration
     And I am logged in as "Julia"
     And the product model value material of "model-braided-hat" should be "[wool]"
@@ -81,7 +81,7 @@ Feature: Import families
       | code     | attributes            | attribute_as_label | requirements-mobile | requirements-tablet | label-en_US |
       | tractors | sku,name,manufacturer | name               | sku,manufacturer    | sku,manufacturer    | Tractors    |
 
-  Scenario: Successfully update an existing family computes all its root product models in a dedicated step for xlsx
+  Scenario: Successfully update an existing family computes of product models in a dedicated step for xlsx
     Given the "catalog_modeling" catalog configuration
     And I am logged in as "Julia"
     And the product model value material of "model-braided-hat" should be "[wool]"
@@ -99,6 +99,9 @@ Feature: Import families
     And I should see the text "Family import"
     And I should see the text "Compute product models data"
     And the product model "model-braided-hat" should not have the following values "material"
+    And there should only be the following job instance executed:
+      | job_instance                       | times |
+      | xlsx_catalog_modeling_family_import | 1     |
 
   @jira https://akeneo.atlassian.net/browse/PIM-6107
   Scenario: Import an empty label should display the family code on the product datagrid

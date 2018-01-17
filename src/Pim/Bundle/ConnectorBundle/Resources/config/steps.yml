@@ -409,7 +409,7 @@ services:
         arguments:
             - '@pim_catalog.repository.family'
             - '@pim_catalog.query.product_model_query_builder_factory'
-            - '@pim_connector.reader.file.csv_family'
+            - '@pim_connector.reader.file.xlsx_family'
             - '@pim_catalog.entity_with_family_variant.keep_only_values_for_variation'
             - '@validator'
             - '@pim_catalog.saver.product_model'
