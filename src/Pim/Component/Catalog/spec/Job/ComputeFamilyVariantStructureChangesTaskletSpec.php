@@ -54,8 +54,7 @@ class ComputeFamilyVariantStructureChangesTaskletSpec extends ObjectBehavior
         VariantProductInterface $variantProduct,
         ProductModelInterface $rootProductModel,
         ConstraintViolationListInterface $variantProductViolations,
-        ConstraintViolationListInterface $rootProductModelViolations,
-        ArrayCollection $variantProducts
+        ConstraintViolationListInterface $rootProductModelViolations
     ) {
         $stepExecution->getJobParameters()->willReturn($jobParameters);
         $jobParameters->get('family_variant_codes')->willReturn(['tshirt']);
@@ -75,11 +74,6 @@ class ComputeFamilyVariantStructureChangesTaskletSpec extends ObjectBehavior
         // Process the root product models
         $productModelRepository->findRootProductModels($familyVariant)
             ->willReturn([$rootProductModel]);
-        $rootProductModel->hasProductModels()->willReturn(false);
-        $rootProductModel->getProducts()->willReturn($variantProducts);
-        $variantProducts->isEmpty()->willReturn(false);
-        $variantProducts->toArray()->willReturn([$variantProduct]);
-
         $keepOnlyValuesForVariation->updateEntitiesWithFamilyVariant([$rootProductModel])
             ->shouldBeCalled();
         $validator->validate($rootProductModel)->willReturn($rootProductModelViolations);
