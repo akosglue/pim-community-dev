@@ -22,8 +22,8 @@ class KeepOnlyValuesForProductModelsTrees
     /**
      * @param KeepOnlyValuesForVariation $keepOnlyValuesForVariation
      */
-    public function __construct(KeepOnlyValuesForVariation $keepOnlyValuesForVariation) {
-
+    public function __construct(KeepOnlyValuesForVariation $keepOnlyValuesForVariation)
+    {
         $this->keepOnlyValuesForVariation = $keepOnlyValuesForVariation;
     }
 

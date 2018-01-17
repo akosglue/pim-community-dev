@@ -318,7 +318,6 @@ class JobContext extends PimContext
     {
         foreach ($jobExecutionTable->getHash() as $jobExecutionRow) {
             if ($jobExecutionRow['job_instance'] === $jobInstance->getCode()) {
-
                 return (int) $jobExecutionRow['times'];
             }
         }
