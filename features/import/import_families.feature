@@ -41,6 +41,9 @@ Feature: Import families
     And I should see the text "Family import"
     And I should see the text "Compute product models data"
     And the product model "model-braided-hat" should not have the following values "material"
+    And there should only be the following job instance executed:
+      | job_instance                       | times |
+      | csv_catalog_modeling_family_import | 1     |
 
   Scenario: Successfully update existing family and add a new one
     Given the "footwear" catalog configuration
