@@ -100,7 +100,7 @@ Feature: Import families
     And I should see the text "Compute product models data"
     And the product model "model-braided-hat" should not have the following values "material"
     And there should only be the following job instance executed:
-      | job_instance                       | times |
+      | job_instance                        | times |
       | xlsx_catalog_modeling_family_import | 1     |
 
   @jira https://akeneo.atlassian.net/browse/PIM-6107
