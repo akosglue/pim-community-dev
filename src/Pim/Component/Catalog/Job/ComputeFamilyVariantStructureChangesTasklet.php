@@ -8,7 +8,7 @@ use Akeneo\Component\Batch\Model\StepExecution;
 use Akeneo\Component\StorageUtils\Saver\SaverInterface;
 use Doctrine\Common\Persistence\ObjectRepository;
 use Doctrine\ORM\EntityRepository;
-use Pim\Component\Catalog\EntityWithFamilyVariant\KeepOnlyValuesForProductModelsTrees;
+use Pim\Component\Catalog\EntityWithFamilyVariant\KeepOnlyValuesForVariation;
 use Pim\Component\Catalog\Model\EntityWithFamilyVariantInterface;
 use Pim\Component\Catalog\Model\ProductInterface;
 use Pim\Component\Catalog\Model\ProductModelInterface;
@@ -41,20 +41,20 @@ class ComputeFamilyVariantStructureChangesTasklet implements TaskletInterface
     /** @var SaverInterface */
     private $productModelSaver;
 
-    /** @var KeepOnlyValuesForProductModelsTrees */
-    private $keepOnlyValuesForProductModelsTrees;
+    /** @var KeepOnlyValuesForVariation */
+    private $keepOnlyValuesForVariation;
 
     /** @var ValidatorInterface */
     private $validator;
 
     /**
-     * @param EntityRepository                    $familyVariantRepository
-     * @param ObjectRepository                    $variantProductRepository
-     * @param ProductModelRepositoryInterface     $productModelRepository
-     * @param SaverInterface                      $productSaver
-     * @param SaverInterface                      $productModelSaver
-     * @param KeepOnlyValuesForProductModelsTrees $keepOnlyValuesForProductModelsTrees
-     * @param ValidatorInterface                  $validator
+     * @param EntityRepository                $familyVariantRepository
+     * @param ObjectRepository                $variantProductRepository
+     * @param ProductModelRepositoryInterface $productModelRepository
+     * @param SaverInterface                  $productSaver
+     * @param SaverInterface                  $productModelSaver
+     * @param KeepOnlyValuesForVariation      $keepOnlyValuesForVariation
+     * @param ValidatorInterface              $validator
      */
     public function __construct(
         EntityRepository $familyVariantRepository,
@@ -62,7 +62,7 @@ class ComputeFamilyVariantStructureChangesTasklet implements TaskletInterface
         ProductModelRepositoryInterface $productModelRepository,
         SaverInterface $productSaver,
         SaverInterface $productModelSaver,
-        KeepOnlyValuesForProductModelsTrees $keepOnlyValuesForProductModelsTrees,
+        KeepOnlyValuesForVariation $keepOnlyValuesForVariation,
         ValidatorInterface $validator
     ) {
         $this->familyVariantRepository = $familyVariantRepository;
@@ -70,7 +70,7 @@ class ComputeFamilyVariantStructureChangesTasklet implements TaskletInterface
         $this->productModelRepository = $productModelRepository;
         $this->productSaver = $productSaver;
         $this->productModelSaver = $productModelSaver;
-        $this->keepOnlyValuesForProductModelsTrees = $keepOnlyValuesForProductModelsTrees;
+        $this->keepOnlyValuesForVariation = $keepOnlyValuesForVariation;
         $this->validator = $validator;
     }
 
@@ -94,37 +94,38 @@ class ComputeFamilyVariantStructureChangesTasklet implements TaskletInterface
         foreach ($familyVariants as $familyVariant) {
             $rootProductModels = $this->productModelRepository->findRootProductModels($familyVariant);
             foreach ($rootProductModels as $rootProductModel) {
-                $this->keepOnlyValuesForProductModelsTrees->update([$rootProductModel]);
-                $this->validateAndSaveVariantTree([$rootProductModel]);
+                $this->validateAndSaveProductModelAndDescendants([$rootProductModel]);
             }
         }
     }
 
     /**
-     * Recursively validates each elements of the tree and save them if they are valid.
+     * Recursively (upwards) updates, validates each elements of the tree and save them if they are valid.
+     *
+     * It is important to validate and save the product model tree upward. Starting from the products up to the root
+     * product model otherwise we may loose information when moving attribute from the attribute sets in the
+     * family variant.
      *
      * @param array $entitiesWithFamilyVariant
      */
-    private function validateAndSaveVariantTree(array $entitiesWithFamilyVariant)
+    private function validateAndSaveProductModelAndDescendants(array $entitiesWithFamilyVariant)
     {
-        $updatedEntities = [];
-        foreach ($entitiesWithFamilyVariant as $updatedEntity) {
-            $this->validateEntity($updatedEntity);
-            $updatedEntities[] = $updatedEntity;
-        }
-
-        foreach ($updatedEntities as $updatedEntity) {
-            $this->saveEntity($updatedEntity);
-
-            if (!$updatedEntity instanceof ProductModelInterface) {
-                continue;
+        foreach ($entitiesWithFamilyVariant as $entityWithFamilyVariant) {
+            if ($entityWithFamilyVariant instanceof ProductModelInterface) {
+                if ($entityWithFamilyVariant->hasProductModels()) {
+                    $this->validateAndSaveProductModelAndDescendants(
+                        $entityWithFamilyVariant->getProductModels()->toArray()
+                    );
+                } elseif (!$entityWithFamilyVariant->getProducts()->isEmpty()) {
+                    $this->validateAndSaveProductModelAndDescendants(
+                        $entityWithFamilyVariant->getProducts()->toArray()
+                    );
+                }
             }
 
-            if ($updatedEntity->hasProductModels()) {
-                $this->validateAndSaveVariantTree($updatedEntity->getProductModels()->toArray());
-            } elseif (!$updatedEntity->getProducts()->isEmpty()) {
-                $this->validateAndSaveVariantTree($updatedEntity->getProducts()->toArray());
-            }
+            $this->keepOnlyValuesForVariation->updateEntitiesWithFamilyVariant($entitiesWithFamilyVariant);
+            $this->validateEntity($entityWithFamilyVariant);
+            $this->saveEntity($entityWithFamilyVariant);
         }
     }
 

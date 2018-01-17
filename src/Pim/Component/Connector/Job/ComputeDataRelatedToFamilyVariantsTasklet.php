@@ -12,6 +12,8 @@ use Akeneo\Component\StorageUtils\Cache\CacheClearerInterface;
 use Akeneo\Component\StorageUtils\Cursor\CursorInterface;
 use Akeneo\Component\StorageUtils\Saver\BulkSaverInterface;
 use Pim\Component\Catalog\EntityWithFamilyVariant\KeepOnlyValuesForProductModelsTrees;
+use Pim\Component\Catalog\EntityWithFamilyVariant\KeepOnlyValuesForVariation;
+use Pim\Component\Catalog\Model\EntityWithFamilyVariantInterface;
 use Pim\Component\Catalog\Model\FamilyInterface;
 use Pim\Component\Catalog\Model\ProductModelInterface;
 use Pim\Component\Catalog\Query\Filter\Operators;
@@ -54,7 +56,7 @@ class ComputeDataRelatedToFamilyVariantsTasklet implements TaskletInterface, Ini
     private $productQueryBuilderFactory;
 
     /** @var KeepOnlyValuesForProductModelsTrees */
-    private $keepOnlyValuesForProductModelTrees;
+    private $keepOnlyValuesForVariation;
 
     /** @var ValidatorInterface */
     private $validator;
@@ -63,7 +65,7 @@ class ComputeDataRelatedToFamilyVariantsTasklet implements TaskletInterface, Ini
      * @param FamilyRepositoryInterface           $familyRepository
      * @param ProductQueryBuilderFactoryInterface $productQueryBuilderFactory
      * @param ItemReaderInterface                 $familyReader
-     * @param KeepOnlyValuesForProductModelsTrees $keepOnlyValuesForProductModelsTrees
+     * @param KeepOnlyValuesForProductModelsTrees $keepOnlyValuesForVariation
      * @param ValidatorInterface                  $validator
      * @param BulkSaverInterface                  $productModelSaver
      * @param BulkSaverInterface                  $productSaver
@@ -73,7 +75,7 @@ class ComputeDataRelatedToFamilyVariantsTasklet implements TaskletInterface, Ini
         FamilyRepositoryInterface $familyRepository,
         ProductQueryBuilderFactoryInterface $productQueryBuilderFactory,
         ItemReaderInterface $familyReader,
-        KeepOnlyValuesForProductModelsTrees $keepOnlyValuesForProductModelsTrees,
+        KeepOnlyValuesForVariation $keepOnlyValuesForVariation,
         ValidatorInterface $validator,
         BulkSaverInterface $productModelSaver,
         BulkSaverInterface $productSaver,
@@ -85,7 +87,7 @@ class ComputeDataRelatedToFamilyVariantsTasklet implements TaskletInterface, Ini
         $this->productModelSaver = $productModelSaver;
         $this->productSaver = $productSaver;
         $this->cacheClearer = $cacheClearer;
-        $this->keepOnlyValuesForProductModelTrees = $keepOnlyValuesForProductModelsTrees;
+        $this->keepOnlyValuesForVariation = $keepOnlyValuesForVariation;
         $this->validator = $validator;
     }
 
@@ -120,8 +122,8 @@ class ComputeDataRelatedToFamilyVariantsTasklet implements TaskletInterface, Ini
                 continue;
             }
 
-            foreach($this->getRootProductModelsForFamily($family) as $rootProductModel) {
-                $this->computeProductModelData($rootProductModel);
+            foreach ($this->getRootProductModelsForFamily($family) as $rootProductModel) {
+                $this->updateProductModelAndDescendants([$rootProductModel]);
             }
         }
     }
@@ -149,51 +151,62 @@ class ComputeDataRelatedToFamilyVariantsTasklet implements TaskletInterface, Ini
     }
 
     /**
-     * @param ProductModelInterface $rootProductModel
+     * Recursively (upwards) updates, validates each elements of the tree and save them if they are valid.
+     *
+     * It is important to validate and save the product model tree upward. Starting from the products up to the root
+     * product model otherwise we may loose information when moving attribute from the attribute sets in the
+     * family variant.
+     *
+     * @param array $entitiesWithFamilyVariant
      */
-    private function computeProductModelData(ProductModelInterface $rootProductModel): void
+    private function updateProductModelAndDescendants(array $entitiesWithFamilyVariant)
     {
-        $this->keepOnlyValuesForProductModelTrees->update([$rootProductModel]);
-        $this->validateAndSaveVariantTree([$rootProductModel]);
-    }
-
-    private function validateAndSaveVariantTree(array $entitiesWithFamilyVariant)
-    {
-        $validProductModels = [];
-        $validProducts = [];
-
         foreach ($entitiesWithFamilyVariant as $entityWithFamilyVariant) {
-            $violations = $this->validator->validate($entityWithFamilyVariant);
-
-            if ($violations->count() > 0) {
-                $this->stepExecution->incrementSummaryInfo('skip');
-            } else {
-                if ($entityWithFamilyVariant instanceof ProductModelInterface) {
-                    $validProductModels[] = $entityWithFamilyVariant;
-                } else {
-                    $validProducts[] = $entityWithFamilyVariant;
+            if ($entityWithFamilyVariant instanceof ProductModelInterface) {
+                if ($entityWithFamilyVariant->hasProductModels()) {
+                    $this->updateProductModelAndDescendants(
+                        $entityWithFamilyVariant->getProductModels()->toArray()
+                    );
+                } elseif (!$entityWithFamilyVariant->getProducts()->isEmpty()) {
+                    $this->updateProductModelAndDescendants(
+                        $entityWithFamilyVariant->getProducts()->toArray()
+                    );
                 }
-
-                $this->stepExecution->incrementSummaryInfo('process');
             }
 
-            if (!$entityWithFamilyVariant instanceof ProductModelInterface) {
+            $this->keepOnlyValuesForVariation->updateEntitiesWithFamilyVariant($entitiesWithFamilyVariant);
+
+            if (!$this->isValid($entityWithFamilyVariant)) {
+                $this->stepExecution->incrementSummaryInfo('skip');
                 continue;
             }
 
-            if ($entityWithFamilyVariant->hasProductModels()) {
-                $this->validateAndSaveVariantTree($entityWithFamilyVariant->getProductModels()->toArray());
-            } elseif (!$entityWithFamilyVariant->getProducts()->isEmpty()) {
-                $this->validateAndSaveVariantTree($entityWithFamilyVariant->getProducts()->toArray());
-            }
+            $this->saveEntity($entityWithFamilyVariant);
+            $this->stepExecution->incrementSummaryInfo('process');
         }
+    }
 
-        if (!empty($validProductModels)) {
-            $this->productModelSaver->saveAll($validProductModels);
-        }
+    /**
+     * @param EntityWithFamilyVariantInterface $entityWithFamilyVariant
+     *
+     * @return bool
+     */
+    private function isValid(EntityWithFamilyVariantInterface $entityWithFamilyVariant): bool
+    {
+        $violations = $this->validator->validate($entityWithFamilyVariant);
 
-        if (!empty($validProducts)) {
-            $this->productSaver->saveAll($validProducts);
+        return $violations->count() === 0;
+    }
+
+    /**
+     * @param EntityWithFamilyVariantInterface $entityWithFamilyVariant
+     */
+    private function saveEntity(EntityWithFamilyVariantInterface $entityWithFamilyVariant): void
+    {
+        if ($entityWithFamilyVariant instanceof ProductModelInterface) {
+            $this->productModelSaver->saveAll([$entityWithFamilyVariant]);
+        } else {
+            $this->productSaver->saveAll([$entityWithFamilyVariant]);
         }
     }
 }

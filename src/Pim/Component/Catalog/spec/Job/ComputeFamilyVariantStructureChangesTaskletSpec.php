@@ -6,6 +6,7 @@ use Akeneo\Component\Batch\Job\JobParameters;
 use Akeneo\Component\Batch\Model\StepExecution;
 use Akeneo\Component\StorageUtils\Detacher\ObjectDetacherInterface;
 use Akeneo\Component\StorageUtils\Saver\SaverInterface;
+use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Persistence\ObjectRepository;
 use Doctrine\ORM\EntityRepository;
 use PhpSpec\ObjectBehavior;
@@ -53,7 +54,8 @@ class ComputeFamilyVariantStructureChangesTaskletSpec extends ObjectBehavior
         VariantProductInterface $variantProduct,
         ProductModelInterface $rootProductModel,
         ConstraintViolationListInterface $variantProductViolations,
-        ConstraintViolationListInterface $rootProductModelViolations
+        ConstraintViolationListInterface $rootProductModelViolations,
+        ArrayCollection $variantProducts
     ) {
         $stepExecution->getJobParameters()->willReturn($jobParameters);
         $jobParameters->get('family_variant_codes')->willReturn(['tshirt']);
@@ -73,6 +75,11 @@ class ComputeFamilyVariantStructureChangesTaskletSpec extends ObjectBehavior
         // Process the root product models
         $productModelRepository->findRootProductModels($familyVariant)
             ->willReturn([$rootProductModel]);
+        $rootProductModel->hasProductModels()->willReturn(false);
+        $rootProductModel->getProducts()->willReturn($variantProducts);
+        $variantProducts->isEmpty()->willReturn(false);
+        $variantProducts->toArray()->willReturn([$variantProduct]);
+
         $keepOnlyValuesForVariation->updateEntitiesWithFamilyVariant([$rootProductModel])
             ->shouldBeCalled();
         $validator->validate($rootProductModel)->willReturn($rootProductModelViolations);

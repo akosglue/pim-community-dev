@@ -10,14 +10,13 @@ use Akeneo\Component\Batch\Model\StepExecution;
 use Akeneo\Component\StorageUtils\Cache\CacheClearerInterface;
 use Akeneo\Component\StorageUtils\Cursor\CursorInterface;
 use Akeneo\Component\StorageUtils\Saver\BulkSaverInterface;
-use Akeneo\Component\StorageUtils\Saver\SaverInterface;
 use Doctrine\Common\Collections\ArrayCollection;
 use PhpSpec\ObjectBehavior;
 use Pim\Bundle\EnrichBundle\ProductQueryBuilder\ProductAndProductModelQueryBuilder;
-use Pim\Component\Catalog\EntityWithFamilyVariant\KeepOnlyValuesForProductModelsTrees;
+use Pim\Component\Catalog\EntityWithFamilyVariant\KeepOnlyValuesForVariation;
 use Pim\Component\Catalog\Model\FamilyInterface;
-use Pim\Component\Catalog\Model\ProductInterface;
 use Pim\Component\Catalog\Model\ProductModelInterface;
+use Pim\Component\Catalog\Model\VariantProductInterface;
 use Pim\Component\Catalog\Query\Filter\Operators;
 use Pim\Component\Catalog\Query\ProductQueryBuilderFactoryInterface;
 use Pim\Component\Catalog\Repository\FamilyRepositoryInterface;
@@ -32,7 +31,7 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
         FamilyRepositoryInterface $familyRepository,
         ProductQueryBuilderFactoryInterface $productModelQueryBuilderFactory,
         ItemReaderInterface $familyReader,
-        KeepOnlyValuesForProductModelsTrees $keepOnlyValuesForProductModelsTrees,
+        KeepOnlyValuesForVariation $keepOnlyValuesForVariation,
         ValidatorInterface $validator,
         BulkSaverInterface $productModelSaver,
         BulkSaverInterface $productSaver,
@@ -42,7 +41,7 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
             $familyRepository,
             $productModelQueryBuilderFactory,
             $familyReader,
-            $keepOnlyValuesForProductModelsTrees,
+            $keepOnlyValuesForVariation,
             $validator,
             $productModelSaver,
             $productSaver,
@@ -58,7 +57,7 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
     function it_saves_the_product_model_and_its_descendants_belonging_to_the_family(
         $familyReader,
         $familyRepository,
-        $keepOnlyValuesForProductModelsTrees,
+        $keepOnlyValuesForVariation,
         $validator,
         $productModelSaver,
         $productSaver,
@@ -66,7 +65,7 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
         FamilyInterface $family,
         ProductModelInterface $rootProductModel,
         ProductModelInterface $subProductModel,
-        ProductInterface $product,
+        VariantProductInterface $product,
         StepExecution $stepExecution,
         ProductAndProductModelQueryBuilder $pqb,
         CursorInterface $cursor,
@@ -101,7 +100,9 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
         $products->isEmpty()->willReturn(false);
         $products->toArray()->willReturn([$product]);
 
-        $keepOnlyValuesForProductModelsTrees->update([$rootProductModel])->shouldBeCalled();
+        $keepOnlyValuesForVariation->updateEntitiesWithFamilyVariant([$product])->shouldBeCalled();
+        $keepOnlyValuesForVariation->updateEntitiesWithFamilyVariant([$subProductModel])->shouldBeCalled();
+        $keepOnlyValuesForVariation->updateEntitiesWithFamilyVariant([$rootProductModel])->shouldBeCalled();
 
         $rootProductModelViolationLists->count()->willReturn(0);
         $subProductModelViolationLists->count()->willReturn(0);
@@ -125,7 +126,7 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
     function it_saves_the_product_models_and_its_descendants_belonging_to_the_families(
         $familyReader,
         $familyRepository,
-        $keepOnlyValuesForProductModelsTrees,
+        $keepOnlyValuesForVariation,
         $validator,
         $productModelSaver,
         $productSaver,
@@ -138,8 +139,8 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
         ArrayCollection $productCollection2,
         ProductModelInterface $subProductModel1,
         ProductModelInterface $rootProductModel2,
-        ProductInterface $product1,
-        ProductInterface $product2,
+        VariantProductInterface $product1,
+        VariantProductInterface $product2,
         StepExecution $stepExecution,
         ProductAndProductModelQueryBuilder $pqb1,
         ProductAndProductModelQueryBuilder $pqb2,
@@ -168,7 +169,9 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
         $cursor1->next()->willReturn($rootProductModel1);
         $cursor1->current()->willReturn($rootProductModel1);
 
-        $keepOnlyValuesForProductModelsTrees->update([$rootProductModel1])->shouldBeCalled();
+        $keepOnlyValuesForVariation->updateEntitiesWithFamilyVariant([$product1])->shouldBeCalled();
+        $keepOnlyValuesForVariation->updateEntitiesWithFamilyVariant([$subProductModel1])->shouldBeCalled();
+        $keepOnlyValuesForVariation->updateEntitiesWithFamilyVariant([$rootProductModel1])->shouldBeCalled();
 
         $rootProductModel1->hasProductModels()->willReturn(true);
         $rootProductModel1->getProductModels()->willReturn($subProductModelCollection1);
@@ -202,7 +205,8 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
         $cursor2->next()->willReturn($rootProductModel2);
         $cursor2->current()->willReturn($rootProductModel2);
 
-        $keepOnlyValuesForProductModelsTrees->update([$rootProductModel2])->shouldBeCalled();
+        $keepOnlyValuesForVariation->updateEntitiesWithFamilyVariant([$product2])->shouldBeCalled();
+        $keepOnlyValuesForVariation->updateEntitiesWithFamilyVariant([$rootProductModel2])->shouldBeCalled();
 
         $rootProductModel2->hasProductModels()->willReturn(false);
         $rootProductModel2->getProducts()->willReturn($productCollection2);
@@ -228,7 +232,6 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
         $familyRepository,
         $productModelQueryBuilderFactory,
         $productModelSaver,
-        $productSaver,
         StepExecution $stepExecution
     ) {
         $familyReader->read()->willReturn(['code' => 'unkown_family'], null);
@@ -248,7 +251,6 @@ class ComputeDataRelatedToFamilyVariantsTaskletSpec extends ObjectBehavior
         $familyRepository,
         $productModelQueryBuilderFactory,
         $productModelSaver,
-        $productSaver,
         StepExecution $stepExecution
     ) {
         $familyReader->read()->willThrow(InvalidItemException::class);

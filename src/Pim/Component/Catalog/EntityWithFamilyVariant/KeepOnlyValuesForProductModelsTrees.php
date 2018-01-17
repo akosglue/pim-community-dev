@@ -28,23 +28,25 @@ class KeepOnlyValuesForProductModelsTrees
     }
 
     /**
+     * It is important to validate and save the product model tree upward. Starting from the products up to the root
+     * product model otherwise we may loose information when moving attribute from attribute sets in the family variant.
+     *
      * @param array $entitiesWithFamilyVariant
      */
     public function update(array $entitiesWithFamilyVariant): void
     {
-        $this->keepOnlyValuesForVariation->updateEntitiesWithFamilyVariant($entitiesWithFamilyVariant);
-
-        foreach ($entitiesWithFamilyVariant as $entityWithValue) {
-            if (!$entityWithValue instanceof ProductModelInterface) {
+        foreach ($entitiesWithFamilyVariant as $entityWithFamilyVariant) {
+            if (!$entityWithFamilyVariant instanceof ProductModelInterface) {
                 break;
             }
-            $entityWithValuesChildren = [];
-            if ($entityWithValue->hasProductModels()) {
-                $entityWithValuesChildren = $entityWithValue->getProductModels()->toArray();
-            } elseif (!$entityWithValue->getProducts()->isEmpty()) {
-                $entityWithValuesChildren = $entityWithValue->getProducts()->toArray();
+
+            if ($entityWithFamilyVariant->hasProductModels()) {
+                $this->update($entityWithFamilyVariant->getProductModels()->toArray());
+            } elseif (!$entityWithFamilyVariant->getProducts()->isEmpty()) {
+                $this->update($entityWithFamilyVariant->getProducts()->toArray());
             }
-            $this->update($entityWithValuesChildren);
         }
+
+        $this->keepOnlyValuesForVariation->updateEntitiesWithFamilyVariant($entitiesWithFamilyVariant);
     }
 }
